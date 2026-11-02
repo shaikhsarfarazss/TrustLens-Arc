@@ -141,6 +141,13 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
           screenObj.traverse((child) => {
             if (child.isMesh) {
               screenMat = child.material.clone();
+              // Eliminate dirty fabric/grunge texture from original model
+              screenMat.map = null;
+              screenMat.color = new THREE.Color(0x050814); // Deep Obsidian Cyber OLED Glass
+              screenMat.roughness = 0.12; // Ultra-clean glossy screen
+              screenMat.metalness = 0.88; // Sleek reflections
+              screenMat.emissive = new THREE.Color(0x00f0ff); // Radiant neon cyan
+              screenMat.emissiveIntensity = 2.4;
               screenMat.emissiveMap = openTex;
               screenMat.needsUpdate = true;
               child.material = screenMat;
@@ -191,16 +198,34 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
     };
 
     const onMouseMove = (e) => {
-      if (!isDraggingRef.current) return;
-      const deltaX = e.clientX - previousMousePosRef.current.x;
-      const deltaY = e.clientY - previousMousePosRef.current.y;
-      previousMousePosRef.current = { x: e.clientX, y: e.clientY };
+      if (isDraggingRef.current) {
+        // Manual drag rotation
+        const deltaX = e.clientX - previousMousePosRef.current.x;
+        const deltaY = e.clientY - previousMousePosRef.current.y;
+        previousMousePosRef.current = { x: e.clientX, y: e.clientY };
 
-      targetRotationRef.current.y += deltaX * 0.008;
-      targetRotationRef.current.x = Math.max(
-        -0.35,
-        Math.min(0.35, targetRotationRef.current.x + deltaY * 0.006)
-      );
+        targetRotationRef.current.y += deltaX * 0.008;
+        targetRotationRef.current.x = Math.max(
+          -0.35,
+          Math.min(0.35, targetRotationRef.current.x + deltaY * 0.006)
+        );
+      } else {
+        // Interactive Head & Gaze Tracking towards Cursor
+        const rect = container.getBoundingClientRect();
+        const normX = ((e.clientX - (rect.left + rect.width / 2)) / (window.innerWidth / 2));
+        const normY = ((e.clientY - (rect.top + rect.height / 2)) / (window.innerHeight / 2));
+
+        // Tilt up/down and turn left/right smoothly
+        targetRotationRef.current.y = Math.max(-1.0, Math.min(1.0, normX)) * 0.44;
+        targetRotationRef.current.x = Math.max(-1.0, Math.min(1.0, normY)) * 0.24;
+      }
+    };
+
+    const onMouseLeave = () => {
+      if (!isDraggingRef.current) {
+        targetRotationRef.current.x = 0;
+        targetRotationRef.current.y = 0;
+      }
     };
 
     const onMouseUp = () => {
@@ -249,6 +274,7 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
     window.addEventListener('touchmove', onTouchMove, { passive: true });
     window.addEventListener('touchend', onTouchEnd);
     container.addEventListener('wheel', onWheel, { passive: true });
+    window.addEventListener('mouseleave', onMouseLeave);
 
     // 5. Animation Loop with Smooth Damping & Subtle Breathing
     let clock = new THREE.Clock();
@@ -367,6 +393,7 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('touchend', onTouchEnd);
       container.removeEventListener('wheel', onWheel);
+      window.removeEventListener('mouseleave', onMouseLeave);
       openTex.dispose();
       halfTex.dispose();
       blinkTex.dispose();

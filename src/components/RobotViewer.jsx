@@ -36,6 +36,13 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
     let isBlinking = false;
     let isDoubleBlink = false;
 
+    // Interactive Cursor Gaze & Head Tracking State
+    let robotRoot = null;
+    let targetRotX = 0;
+    let targetRotY = 0;
+    let curRotX = 0;
+    let curRotY = 0;
+
     // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
@@ -107,6 +114,13 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
           screenObj.traverse((child) => {
             if (child.isMesh) {
               screenMat = child.material.clone();
+              // Eliminate dirty fabric/grunge texture from original model
+              screenMat.map = null;
+              screenMat.color = new THREE.Color(0x050814); // Deep Obsidian Cyber OLED Glass
+              screenMat.roughness = 0.12; // Ultra-clean glossy screen
+              screenMat.metalness = 0.88; // Sleek reflections
+              screenMat.emissive = new THREE.Color(0x00f0ff); // Radiant neon cyan
+              screenMat.emissiveIntensity = 2.4;
               screenMat.emissiveMap = openTex;
               screenMat.needsUpdate = true;
               child.material = screenMat;
@@ -135,6 +149,7 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
         // Position feet on the command center floor (y = -1.26 in world units)
         rootGroup.position.set(0, -1.26, 0);
         scene.add(rootGroup);
+        robotRoot = rootGroup;
 
         setLoading(false);
       },
@@ -221,9 +236,37 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
         }
       }
 
+      // Smoothly interpolate robot head & gaze towards cursor
+      curRotX += (targetRotX - curRotX) * 0.08;
+      curRotY += (targetRotY - curRotY) * 0.08;
+
+      if (robotRoot) {
+        robotRoot.rotation.x = curRotX;
+        robotRoot.rotation.y = curRotY;
+      }
+
       renderer.render(scene, camera);
     };
     animate();
+
+    // 5. Cursor Tracking Pointer Events
+    const onPointerMove = (e) => {
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const normX = ((e.clientX - (rect.left + rect.width / 2)) / (window.innerWidth / 2));
+      const normY = ((e.clientY - (rect.top + rect.height / 2)) / (window.innerHeight / 2));
+
+      targetRotY = Math.max(-1.0, Math.min(1.0, normX)) * 0.44;
+      targetRotX = Math.max(-1.0, Math.min(1.0, normY)) * 0.24;
+    };
+
+    const onPointerLeave = () => {
+      targetRotX = 0;
+      targetRotY = 0;
+    };
+
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('pointerleave', onPointerLeave);
 
     // Resize handler
     const handleResize = () => {
@@ -238,6 +281,8 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
       isDisposed = true;
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerleave', onPointerLeave);
       openTex.dispose();
       halfTex.dispose();
       blinkTex.dispose();
