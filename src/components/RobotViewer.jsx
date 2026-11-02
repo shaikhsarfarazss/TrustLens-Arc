@@ -20,6 +20,22 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
     let animId;
     let isDisposed = false;
 
+    // Blinking eye textures & state for robot screen
+    let screenMat = null;
+    const texLoader = new THREE.TextureLoader();
+    const openTex = texLoader.load('/robot_emissive_open.jpg');
+    openTex.flipY = false;
+    const halfTex = texLoader.load('/robot_emissive_half.jpg');
+    halfTex.flipY = false;
+    const blinkTex = texLoader.load('/robot_emissive_blink.jpg');
+    blinkTex.flipY = false;
+    const blinkTextures = { openTex, halfTex, blinkTex };
+
+    let nextBlinkTime = 2.5;
+    let blinkStartTime = 0;
+    let isBlinking = false;
+    let isDoubleBlink = false;
+
     // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
@@ -86,6 +102,18 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
           }
         }
 
+        // Setup isolated screen blinking texture (modifies ONLY screen face)
+        if (screenObj) {
+          screenObj.traverse((child) => {
+            if (child.isMesh) {
+              screenMat = child.material.clone();
+              screenMat.emissiveMap = openTex;
+              screenMat.needsUpdate = true;
+              child.material = screenMat;
+            }
+          });
+        }
+
         // Measure true bounding box
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
@@ -121,10 +149,78 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
       }
     );
 
-    // 4. Still Animation Loop (No jumping, no rotating)
+    // 4. Still Animation Loop with Lifelike Screen Blinking
+    let clock = new THREE.Clock();
+
     const animate = () => {
       animId = requestAnimationFrame(animate);
       if (!isVisibleRef.current) return;
+
+      const elapsedTime = clock.getElapsedTime();
+
+      // Natural Screen Eye Blink Logic (operates strictly on robot screen face)
+      if (screenMat && blinkTextures) {
+        if (elapsedTime >= nextBlinkTime && !isBlinking) {
+          isBlinking = true;
+          blinkStartTime = elapsedTime;
+          isDoubleBlink = Math.random() < 0.25; // 25% chance of realistic double-blink
+        }
+
+        if (isBlinking) {
+          const dt = (elapsedTime - blinkStartTime) * 1000;
+
+          if (dt < 40) {
+            if (screenMat.emissiveMap !== blinkTextures.halfTex) {
+              screenMat.emissiveMap = blinkTextures.halfTex;
+              screenMat.needsUpdate = true;
+            }
+          } else if (dt < 160) {
+            if (screenMat.emissiveMap !== blinkTextures.blinkTex) {
+              screenMat.emissiveMap = blinkTextures.blinkTex;
+              screenMat.needsUpdate = true;
+            }
+          } else if (dt < 200) {
+            if (screenMat.emissiveMap !== blinkTextures.halfTex) {
+              screenMat.emissiveMap = blinkTextures.halfTex;
+              screenMat.needsUpdate = true;
+            }
+          } else if (isDoubleBlink && dt < 280) {
+            // Brief open pause between double-blinks
+            if (screenMat.emissiveMap !== blinkTextures.openTex) {
+              screenMat.emissiveMap = blinkTextures.openTex;
+              screenMat.needsUpdate = true;
+            }
+          } else if (isDoubleBlink && dt < 320) {
+            // Second blink: half
+            if (screenMat.emissiveMap !== blinkTextures.halfTex) {
+              screenMat.emissiveMap = blinkTextures.halfTex;
+              screenMat.needsUpdate = true;
+            }
+          } else if (isDoubleBlink && dt < 420) {
+            // Second blink: closed
+            if (screenMat.emissiveMap !== blinkTextures.blinkTex) {
+              screenMat.emissiveMap = blinkTextures.blinkTex;
+              screenMat.needsUpdate = true;
+            }
+          } else if (isDoubleBlink && dt < 460) {
+            // Second blink: reopening
+            if (screenMat.emissiveMap !== blinkTextures.halfTex) {
+              screenMat.emissiveMap = blinkTextures.halfTex;
+              screenMat.needsUpdate = true;
+            }
+          } else {
+            // Return to normal open eyes
+            if (screenMat.emissiveMap !== blinkTextures.openTex) {
+              screenMat.emissiveMap = blinkTextures.openTex;
+              screenMat.needsUpdate = true;
+            }
+            isBlinking = false;
+            // Schedule next blink in 3.0 to 5.5 seconds
+            nextBlinkTime = elapsedTime + 3.0 + Math.random() * 2.5;
+          }
+        }
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -142,6 +238,9 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
       isDisposed = true;
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
+      openTex.dispose();
+      halfTex.dispose();
+      blinkTex.dispose();
       renderer.dispose();
       if (container && renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
