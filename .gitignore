@@ -33,3 +33,4 @@ service-account.json
 .env.*
 !.env.example
 
+*.bak
