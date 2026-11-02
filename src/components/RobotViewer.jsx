@@ -36,12 +36,12 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
     let isBlinking = false;
     let isDoubleBlink = false;
 
-    // Interactive Cursor Gaze & Head Tracking State
-    let robotRoot = null;
-    let targetRotX = 0;
-    let targetRotY = 0;
-    let curRotX = 0;
-    let curRotY = 0;
+    // Fast Head-Only Tracking State (Body stays completely still)
+    let headPivotRef = null;
+    let targetHeadRotX = 0;
+    let targetHeadRotY = 0;
+    let curHeadRotX = 0;
+    let curHeadRotY = 0;
 
     // 1. Scene, Camera, Renderer
     const scene = new THREE.Scene();
@@ -149,7 +149,31 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
         // Position feet on the command center floor (y = -1.26 in world units)
         rootGroup.position.set(0, -1.26, 0);
         scene.add(rootGroup);
-        robotRoot = rootGroup;
+
+        // Setup isolated Head Pivot: moves ONLY head, body stays 100% still
+        const headPivot = new THREE.Group();
+        const headBox = new THREE.Box3();
+        const headPartNames = ['head', 'screen', 'cap', 'ears', 'ears_part_1', 'ears_part_2'];
+        const headParts = [];
+
+        headPartNames.forEach((name) => {
+          const part = model.getObjectByName(name);
+          if (part) {
+            headBox.expandByObject(part);
+            headParts.push(part);
+          }
+        });
+
+        const headCenter = new THREE.Vector3();
+        headBox.getCenter(headCenter);
+        // Position pivot at the neck base
+        headPivot.position.set(headCenter.x, headBox.min.y + 0.12, headCenter.z);
+        model.add(headPivot);
+
+        headParts.forEach((part) => {
+          headPivot.attach(part);
+        });
+        headPivotRef = headPivot;
 
         setLoading(false);
       },
@@ -236,33 +260,33 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
         }
       }
 
-      // Smoothly interpolate robot head & gaze towards cursor
-      curRotX += (targetRotX - curRotX) * 0.08;
-      curRotY += (targetRotY - curRotY) * 0.08;
+      // Ultra-Fast Head-Only Gaze Tracking (Lerp 0.35 = snappy instantaneous response, body motionless)
+      curHeadRotX += (targetHeadRotX - curHeadRotX) * 0.35;
+      curHeadRotY += (targetHeadRotY - curHeadRotY) * 0.35;
 
-      if (robotRoot) {
-        robotRoot.rotation.x = curRotX;
-        robotRoot.rotation.y = curRotY;
+      if (headPivotRef) {
+        headPivotRef.rotation.x = curHeadRotX;
+        headPivotRef.rotation.y = curHeadRotY;
       }
 
       renderer.render(scene, camera);
     };
     animate();
 
-    // 5. Cursor Tracking Pointer Events
+    // 5. Cursor Tracking Pointer Events (Fast 1:1 Head movement)
     const onPointerMove = (e) => {
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const normX = ((e.clientX - (rect.left + rect.width / 2)) / (window.innerWidth / 2));
       const normY = ((e.clientY - (rect.top + rect.height / 2)) / (window.innerHeight / 2));
 
-      targetRotY = Math.max(-1.0, Math.min(1.0, normX)) * 0.44;
-      targetRotX = Math.max(-1.0, Math.min(1.0, normY)) * 0.24;
+      targetHeadRotY = Math.max(-1.0, Math.min(1.0, normX)) * 0.52;
+      targetHeadRotX = Math.max(-1.0, Math.min(1.0, normY)) * 0.30;
     };
 
     const onPointerLeave = () => {
-      targetRotX = 0;
-      targetRotY = 0;
+      targetHeadRotX = 0;
+      targetHeadRotY = 0;
     };
 
     window.addEventListener('pointermove', onPointerMove, { passive: true });

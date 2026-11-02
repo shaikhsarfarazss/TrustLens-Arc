@@ -18,6 +18,11 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
   const targetZoomRef = useRef(3.5);
   const cameraRef = useRef(null);
   const modelGroupRef = useRef(null);
+  const headPivotRef = useRef(null);
+  const targetHeadRotX = useRef(0);
+  const targetHeadRotY = useRef(0);
+  const curHeadRotX = useRef(0);
+  const curHeadRotY = useRef(0);
   const rimLightRef = useRef(null);
   const floorLightRef = useRef(null);
   const statusRef = useRef(status);
@@ -178,6 +183,31 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
         scene.add(rootGroup);
         modelGroupRef.current = rootGroup;
 
+        // Setup isolated Head Pivot for Fast Head-Only Tracking (Body stays still)
+        const headPivot = new THREE.Group();
+        const headBox = new THREE.Box3();
+        const headPartNames = ['head', 'screen', 'cap', 'ears', 'ears_part_1', 'ears_part_2'];
+        const headParts = [];
+
+        headPartNames.forEach((name) => {
+          const part = model.getObjectByName(name);
+          if (part) {
+            headBox.expandByObject(part);
+            headParts.push(part);
+          }
+        });
+
+        const headCenter = new THREE.Vector3();
+        headBox.getCenter(headCenter);
+        // Position pivot at the neck base
+        headPivot.position.set(headCenter.x, headBox.min.y + 0.12, headCenter.z);
+        model.add(headPivot);
+
+        headParts.forEach((part) => {
+          headPivot.attach(part);
+        });
+        headPivotRef.current = headPivot;
+
         setLoading(false);
       },
       (xhr) => {
@@ -210,18 +240,19 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
           Math.min(0.35, targetRotationRef.current.x + deltaY * 0.006)
         );
       } else {
-        // Interactive Head & Gaze Tracking towards Cursor
+        // Ultra-Fast Head-Only Tracking towards Cursor (body stays still)
         const rect = container.getBoundingClientRect();
         const normX = ((e.clientX - (rect.left + rect.width / 2)) / (window.innerWidth / 2));
         const normY = ((e.clientY - (rect.top + rect.height / 2)) / (window.innerHeight / 2));
 
-        // Tilt up/down and turn left/right smoothly
-        targetRotationRef.current.y = Math.max(-1.0, Math.min(1.0, normX)) * 0.44;
-        targetRotationRef.current.x = Math.max(-1.0, Math.min(1.0, normY)) * 0.24;
+        targetHeadRotY.current = Math.max(-1.0, Math.min(1.0, normX)) * 0.52;
+        targetHeadRotX.current = Math.max(-1.0, Math.min(1.0, normY)) * 0.30;
       }
     };
 
     const onMouseLeave = () => {
+      targetHeadRotX.current = 0;
+      targetHeadRotY.current = 0;
       if (!isDraggingRef.current) {
         targetRotationRef.current.x = 0;
         targetRotationRef.current.y = 0;
@@ -296,7 +327,7 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
         const breathe = Math.sin(elapsedTime * 2.2) * 0.025;
         modelGroupRef.current.position.y = -1.15 + breathe;
 
-        // Apply interactive rotation
+        // Apply interactive rotation (manual drag)
         modelGroupRef.current.rotation.y = currentRotationRef.current.y;
         modelGroupRef.current.rotation.x = currentRotationRef.current.x;
 
@@ -304,6 +335,15 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
         if (statusRef.current === 'scanning' && floorLightRef.current) {
           floorLightRef.current.intensity = 3.5 + Math.sin(elapsedTime * 8) * 1.5;
         }
+      }
+
+      // Ultra-Fast Head-Only Gaze Tracking (body stays still, head turns fast)
+      curHeadRotX.current += (targetHeadRotX.current - curHeadRotX.current) * 0.35;
+      curHeadRotY.current += (targetHeadRotY.current - curHeadRotY.current) * 0.35;
+
+      if (headPivotRef.current) {
+        headPivotRef.current.rotation.x = curHeadRotX.current;
+        headPivotRef.current.rotation.y = curHeadRotY.current;
       }
 
       // Natural Screen Eye Blink Logic (operates strictly on robot screen face)
