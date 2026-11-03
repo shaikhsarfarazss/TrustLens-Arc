@@ -469,13 +469,27 @@
         let manualRadarAngle = null;
         let clock = new THREE.Clock();
 
+        function getIsoCameraFraming() {
+            const aspect = (window.innerWidth && window.innerHeight) ? (window.innerWidth / window.innerHeight) : 0.8;
+            // Responsive distance to guarantee the full 3D bus with astronaut and thrusters fits comfortably inside the card
+            const baseDist = 17.5;
+            const dist = aspect < 1.0 ? baseDist / Math.max(0.60, aspect * 0.95) : baseDist;
+
+            // Iconic 3/4 isometric viewpoint direction matching reference
+            const dir = new THREE.Vector3(0.65, 0.43, 0.63).normalize();
+            const target = new THREE.Vector3(0.05, 1.25, 0.0);
+            const pos = target.clone().add(dir.multiplyScalar(dist));
+
+            return { pos, target };
+        }
+
         function initScene() {
             const container = document.getElementById('canvas-container');
 
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x060a12); // Sleek cyber dark background
 
-            camera = new THREE.PerspectiveCamera(24, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera = new THREE.PerspectiveCamera(28, window.innerWidth / window.innerHeight, 0.1, 200);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -494,10 +508,12 @@
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.06;
-            controls.maxDistance = 45;
-            controls.minDistance = 4;
-            camera.position.set(7.5, 6.2, 7.2);
-            controls.target.set(0.05, 1.25, 0.0);
+            controls.maxDistance = 50;
+            controls.minDistance = 5;
+
+            const initialFraming = getIsoCameraFraming();
+            camera.position.copy(initialFraming.pos);
+            controls.target.copy(initialFraming.target);
             controls.update();
 
             setupStudioLighting();
@@ -2139,9 +2155,10 @@
 
             switch (preset) {
                 case 'iso':
-                    // Framed close-up so 3D Astro-van is big, prominent, and clearly visible
-                    targetCamPos.set(7.2, 5.8, 7.0);
-                    targetLookAt.set(0.05, 1.25, 0.0);
+                    // Default view: Perfectly frames the entire 3D bus with astronaut so it fits completely in the card
+                    const isoFraming = getIsoCameraFraming();
+                    targetCamPos.copy(isoFraming.pos);
+                    targetLookAt.copy(isoFraming.target);
                     break;
                 case 'astronaut':
                     targetCamPos.set(3.2, 4.8, 6.8);
