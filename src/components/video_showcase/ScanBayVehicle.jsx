@@ -370,7 +370,9 @@ export default function ScanBayVehicle() {
             }`}>
               
               {/* Target Laser Anchor Node on Left Edge */}
-              <div className={`hidden lg:block absolute -left-2.5 top-14 w-5 h-5 rounded-full border-2 transition-all duration-500 ${
+              <div 
+                data-laser-anchor="card1"
+                className={`hidden lg:block absolute -left-2.5 top-14 w-5 h-5 rounded-full border-2 transition-all duration-500 ${
                 isCvScam ? 'bg-red-500 border-white shadow-[0_0_15px_#ef4444]' : 'bg-emerald-500 border-white shadow-[0_0_15px_#10b981]'
               }`} />
 
@@ -596,7 +598,9 @@ export default function ScanBayVehicle() {
             }`}>
               
               {/* Target Laser Anchor Node on Left Edge */}
-              <div className={`hidden lg:block absolute -left-2.5 top-14 w-5 h-5 rounded-full border-2 transition-all duration-500 ${
+              <div 
+                data-laser-anchor="card2"
+                className={`hidden lg:block absolute -left-2.5 top-14 w-5 h-5 rounded-full border-2 transition-all duration-500 ${
                 isQrPhishing ? 'bg-red-500 border-white shadow-[0_0_15px_#ef4444]' : 'bg-emerald-500 border-white shadow-[0_0_15px_#10b981]'
               }`} />
 

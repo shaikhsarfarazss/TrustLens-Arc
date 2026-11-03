@@ -459,6 +459,7 @@
         // ============================================================================
         let scene, camera, renderer, controls;
         let hoverVanGroup, astronautGroup, radarAssemblyGroup, holoGroup, thrustersGroup = [];
+        let radarHornTip = null;
         let thrusterFlames = [];
         let explodeTargets = [];
         let isAnimating = true;
@@ -1731,6 +1732,7 @@
             const hornTip = new THREE.Mesh(new THREE.SphereGeometry(0.076, 20, 20), mats.cyanGlow);
             hornTip.position.z = 0.64;
             dishHead.add(hornTip);
+            radarHornTip = hornTip;
         }
 
         // ----------------------------------------------------------------------------
@@ -2332,6 +2334,31 @@
                 });
             } else if (manualRadarAngle !== null && radarAssemblyGroup) {
                 radarAssemblyGroup.rotation.y = manualRadarAngle;
+            }
+
+            // Real-Time Radar Conical Point Screen Projection for Curved Plasma Fire Tracking
+            if (radarHornTip && camera) {
+                const v = new THREE.Vector3();
+                radarHornTip.getWorldPosition(v);
+                v.project(camera);
+                try {
+                    if (window.parent) {
+                        window.parent.__ASTRO_VAN_RADAR_NDC__ = {
+                            x: v.x,
+                            y: v.y,
+                            z: v.z,
+                            timestamp: performance.now()
+                        };
+                        if (window.parent !== window) {
+                            window.parent.postMessage({
+                                type: 'ASTRO_VAN_RADAR_POSITION',
+                                ndcX: v.x,
+                                ndcY: v.y,
+                                ndcZ: v.z
+                            }, '*');
+                        }
+                    }
+                } catch (e) {}
             }
 
             controls.update();

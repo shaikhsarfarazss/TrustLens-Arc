@@ -2,16 +2,23 @@ import React, { useEffect, useRef } from 'react';
 
 /**
  * RadarLaserBarrage
- * High-density rapid-fire plasma projectile streams firing from the 3D Astro-Van's
- * radar dish to Card 1 and Card 2 in multi-bolt chevron clusters (arcade bullet-hell style).
+ * High-density rapid-fire plasma projectile streams firing dynamically from the 3D Astro-Van's
+ * central conical radar horn tip to Card 1 and Card 2 in multi-bolt chevron clusters.
  * 
- * Dynamic color reaction:
- * - Failure / Threat: Blazing Crimson-Red plasma bolts (#ff1744, #ff5252, #ffffff)
- * - Success / Verified: Blazing Emerald-Green plasma bolts (#00ff88, #10b981, #ffffff)
+ * Key Features:
+ * - Real-Time 3D Conical Point Tracking: Tracks the actual projected 3D coordinates of the radar tip
+ *   on every frame, so no matter how much the user rotates or pans the 3D vehicle model, the fire
+ *   ALWAYS emerges strictly from the conical radar horn tip.
+ * - Graceful Curved Ballistic Trajectories: Projectiles arc and curve smoothly through the air
+ *   instead of travelling along straight lines.
+ * - Dynamic color reaction:
+ *   - Failure / Threat: Blazing Crimson-Red plasma bolts (#ff1744, #ff5252, #ffffff)
+ *   - Success / Verified: Blazing Emerald-Green plasma bolts (#00ff88, #10b981, #ffffff)
  */
 export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
   const canvasRef = useRef(null);
   const animRef = useRef(null);
+  const radarMessagePosRef = useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -35,9 +42,19 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
     resize();
     window.addEventListener('resize', resize);
 
+    // Listen for cross-frame coordinate broadcast from 3D viewer iframe
+    const handleMessage = (event) => {
+      if (event.data && event.data.type === 'ASTRO_VAN_RADAR_POSITION') {
+        radarMessagePosRef.current = {
+          x: event.data.ndcX,
+          y: event.data.ndcY,
+          z: event.data.ndcZ
+        };
+      }
+    };
+    window.addEventListener('message', handleMessage);
+
     // Particle system state
-    // Array of active bullet waves
-    // Each wave has: streamId (1 or 2), progress t: 0..1, speed, colorType
     const waves = [];
     const impactSparks = []; // Sparks generated at impact
     const muzzleRings = [];  // Shockwave rings at radar dish
@@ -46,7 +63,7 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
     let lastSpawnTime2 = 0;
     let lastMuzzleTime = 0;
 
-    // Cubic Bezier helper
+    // Cubic Bezier calculation with tangent angle
     const getCubicPoint = (p0, p1, p2, p3, t) => {
       const mt = 1 - t;
       const mt2 = mt * mt;
@@ -65,7 +82,7 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
       return { x, y, angle };
     };
 
-    // Draw single glowing fiery bullet matching user's reference image
+    // Draw single glowing fiery bullet matching reference image
     const drawFieryBullet = (x, y, angle, colorType, scale = 1) => {
       ctx.save();
       ctx.translate(x, y);
@@ -74,7 +91,6 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
       const isRed = colorType === 'red';
       const mainColor = isRed ? '#FF1E42' : '#00FF88';
       const glowColor = isRed ? 'rgba(255, 30, 66, 0.75)' : 'rgba(0, 255, 136, 0.75)';
-      const auraColor = isRed ? 'rgba(255, 100, 50, 0.35)' : 'rgba(0, 240, 255, 0.35)';
 
       // 1. Tapered Flaming Tail (Extending backward along negative X)
       const tailLength = 34 * scale;
@@ -150,44 +166,110 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
 
       ctx.clearRect(0, 0, width, height);
 
-      // Trajectory 1: Radar dish -> Card 1
-      // Radar dish on 3D Astro-Van is approx at X: 33.5%, Y: 26.5%
-      const startP = { x: width * 0.335, y: height * 0.265 };
+      // -----------------------------------------------------------------------
+      // REAL-TIME RADAR CONICAL TIP TRACKING
+      // Computes exact screen pixel coordinates from the 3D model's radar horn tip
+      // -----------------------------------------------------------------------
+      let startP = { x: width * 0.28, y: height * 0.26 }; // Fallback initial guess
+      const canvasRect = canvas.getBoundingClientRect();
 
-      // Card 1 impact point (left edge anchor node of top card)
-      const end1P = { x: width * 0.505, y: height * 0.215 };
-      const cp1_1 = { x: width * 0.40, y: height * 0.24 };
-      const cp1_2 = { x: width * 0.46, y: height * 0.21 };
+      const iframe = document.querySelector('iframe[src*="astro_van_viewer"]');
+      if (iframe && canvasRect) {
+        const iframeRect = iframe.getBoundingClientRect();
 
-      // Trajectory 2: Radar dish -> Card 2 (bottom card)
-      const end2P = { x: width * 0.505, y: height * 0.705 };
-      const cp2_1 = { x: width * 0.41, y: height * 0.38 };
-      const cp2_2 = { x: width * 0.46, y: height * 0.62 };
+        // 1. Check synchronous direct shared memory from 3D render loop
+        const ndc = window.__ASTRO_VAN_RADAR_NDC__ || radarMessagePosRef.current;
+        if (ndc && typeof ndc.x === 'number' && typeof ndc.y === 'number') {
+          // Convert Normalized Device Coordinates (-1..+1) to iframe pixel coordinates
+          const pxInIframeX = (ndc.x * 0.5 + 0.5) * iframeRect.width;
+          const pxInIframeY = (-ndc.y * 0.5 + 0.5) * iframeRect.height;
+
+          // Convert from iframe space to RadarLaserBarrage canvas space
+          startP = {
+            x: (iframeRect.left - canvasRect.left) + pxInIframeX,
+            y: (iframeRect.top - canvasRect.top) + pxInIframeY
+          };
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // DYNAMIC TARGET ANCHORS ON CARDS 1 & 2
+      // -----------------------------------------------------------------------
+      let end1P = { x: width * 0.505, y: height * 0.215 };
+      let end2P = { x: width * 0.505, y: height * 0.705 };
+
+      if (canvasRect) {
+        const anchor1 = document.querySelector('[data-laser-anchor="card1"]');
+        const anchor2 = document.querySelector('[data-laser-anchor="card2"]');
+        if (anchor1) {
+          const r1 = anchor1.getBoundingClientRect();
+          end1P = {
+            x: (r1.left - canvasRect.left) + r1.width * 0.5,
+            y: (r1.top - canvasRect.top) + r1.height * 0.5
+          };
+        }
+        if (anchor2) {
+          const r2 = anchor2.getBoundingClientRect();
+          end2P = {
+            x: (r2.left - canvasRect.left) + r2.width * 0.5,
+            y: (r2.top - canvasRect.top) + r2.height * 0.5
+          };
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // PRONOUNCED CURVED TRAJECTORIES
+      // Ensures the fire does not go in a straight line, but curves gracefully
+      // -----------------------------------------------------------------------
+      // Stream 1 (Card 1): Arcs upward gracefully from the conical point before curving into Card 1
+      const dx1 = end1P.x - startP.x;
+      const dy1 = end1P.y - startP.y;
+      const arcHeight1 = Math.max(38, Math.abs(dx1) * 0.18);
+      const cp1_1 = {
+        x: startP.x + dx1 * 0.28,
+        y: startP.y - arcHeight1
+      };
+      const cp1_2 = {
+        x: startP.x + dx1 * 0.74,
+        y: end1P.y - arcHeight1 * 0.60
+      };
+
+      // Stream 2 (Card 2): Curves outward and swoops gracefully down into Card 2
+      const dx2 = end2P.x - startP.x;
+      const dy2 = end2P.y - startP.y;
+      const arcHeight2 = Math.max(32, Math.abs(dx2) * 0.14);
+      const cp2_1 = {
+        x: startP.x + dx2 * 0.32,
+        y: startP.y - arcHeight2 * 0.50
+      };
+      const cp2_2 = {
+        x: startP.x + dx2 * 0.68,
+        y: end2P.y - arcHeight2 * 0.30
+      };
 
       const color1 = isCvScam ? 'red' : 'green';
       const color2 = isQrPhishing ? 'red' : 'green';
 
-      // 1. Spawn Muzzle Shockwaves at Radar Origin
+      // 1. Spawn Muzzle Shockwaves at Exact Radar Origin
       if (now - lastMuzzleTime > 380) {
         lastMuzzleTime = now;
         muzzleRings.push({
           x: startP.x,
           y: startP.y,
-          radius: 6,
-          maxRadius: 26,
+          radius: 5,
+          maxRadius: 24,
           opacity: 0.85,
           color: (isCvScam || isQrPhishing) ? '#FF2A4D' : '#00FF88'
         });
       }
 
-      // 2. Controlled, Measured Fire Spawner (Clean 3-Bolt Arrowhead Waves)
-      // Slower cadence: fires rhythmically every ~380ms
+      // 2. Controlled Fire Spawner (Clean 3-Bolt Arrowhead Waves)
       if (now - lastSpawnTime1 > 380) {
         lastSpawnTime1 = now;
         waves.push({
           stream: 1,
           t: 0,
-          speed: 0.88, // Smooth, visible flight (~1.14s)
+          speed: 0.88,
           colorType: color1
         });
       }
@@ -197,12 +279,12 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
         waves.push({
           stream: 2,
           t: 0,
-          speed: 0.84, // Smooth, visible flight (~1.19s)
+          speed: 0.84,
           colorType: color2
         });
       }
 
-      // 3. Render Muzzle Shockwave Rings
+      // 3. Render Muzzle Shockwave Rings at the Conical Tip
       for (let i = muzzleRings.length - 1; i >= 0; i--) {
         const ring = muzzleRings[i];
         ring.radius += 45 * dt;
@@ -225,23 +307,23 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
         ctx.restore();
       }
 
-      // 4. Render Radar Dish Origin Energy Core
+      // 4. Render Radar Dish Conical Tip Energy Core
       ctx.save();
       const originColor = (isCvScam || isQrPhishing) ? '#FF1E42' : '#00FF88';
       ctx.beginPath();
-      ctx.arc(startP.x, startP.y, 9, 0, Math.PI * 2);
+      ctx.arc(startP.x, startP.y, 8, 0, Math.PI * 2);
       ctx.fillStyle = originColor;
       ctx.shadowColor = originColor;
-      ctx.shadowBlur = 22;
+      ctx.shadowBlur = 20;
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(startP.x, startP.y, 4.5, 0, Math.PI * 2);
+      ctx.arc(startP.x, startP.y, 4, 0, Math.PI * 2);
       ctx.fillStyle = '#FFFFFF';
       ctx.fill();
       ctx.restore();
 
-      // 5. Render Waves of Sleek 3-Bolt Arrowhead Formations (Leader + 2 Wings)
+      // 5. Render Waves along the Curved Bezier Flight Paths (Leader + 2 Wings)
       const CHEVRON_OFFSETS = [
         { tOffset: 0.032, perpOffset: 0, scale: 1.2 },       // Center Blazing Leader
         { tOffset: 0.000, perpOffset: -10, scale: 0.9 },     // Left Wing Bolt
@@ -265,13 +347,13 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
           continue;
         }
 
-        // Draw each bolt in the chevron cluster
+        // Draw each bolt along the curve with aligned heading
         CHEVRON_OFFSETS.forEach(offset => {
           const boltT = wave.t + offset.tOffset;
           if (boltT > 0 && boltT < 1.0) {
             const point = getCubicPoint(p0, p1, p2, p3, boltT);
 
-            // Calculate perpendicular normal vector
+            // Calculate perpendicular normal vector along the curved path
             const normX = -Math.sin(point.angle);
             const normY = Math.cos(point.angle);
 
@@ -317,7 +399,6 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
         const color = isRed ? '#FF1E42' : '#00FF88';
 
         ctx.save();
-        // Pulsing impact halo
         const pulse = 1.0 + Math.sin(now * 0.012) * 0.25;
         ctx.beginPath();
         ctx.arc(node.pt.x, node.pt.y, Math.max(0.1, 11 * pulse), 0, Math.PI * 2);
@@ -340,6 +421,7 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
 
     return () => {
       window.removeEventListener('resize', resize);
+      window.removeEventListener('message', handleMessage);
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
   }, [isCvScam, isQrPhishing]);
@@ -353,4 +435,3 @@ export default function RadarLaserBarrage({ isCvScam, isQrPhishing }) {
     </div>
   );
 }
-
