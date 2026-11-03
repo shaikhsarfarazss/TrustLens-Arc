@@ -4,37 +4,29 @@
 
 @layer base {
   body {
-    background-color: #0B1519;
-    color: #F1F5F7;
+    background-color: #070B13;
+    color: #F8FAFC;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
-/* Luxury Dark Petrol & Terracotta Scrollbar */
+/* Custom crisp dark scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #081013;
+  background: #0F172A;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1B313A;
-  border-radius: 4px;
+  background: #334155;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #EE8656;
-}
-
-/* Subtle architectural grid pattern */
-.bg-petrol-grid {
-  background-image: 
-    linear-gradient(rgba(238, 134, 86, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(238, 134, 86, 0.035) 1px, transparent 1px);
-  background-size: 44px 44px;
+  background: #475569;
 }
 
 /* Subtle scanning radar animation */

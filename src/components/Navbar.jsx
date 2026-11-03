@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, ArrowRight, Menu, X, Sparkles, PhoneCall } from 'lucide-react';
+import { Sparkles, ArrowRight, Menu, X } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { id: 'overview-section', label: 'HOME' },
-  { id: 'deepfakes-section', label: 'SERVICES' },
-  { id: 'scanbay-section', label: 'SCAN BAY' },
-  { id: 'telemetry-section', label: 'REVIEWS' },
-  { id: 'footer-section', label: 'CONTACT' }
+  { id: 'overview-section', label: 'Overview' },
+  { id: 'deepfakes-section', label: 'Sentinel Hub' },
+  { id: 'scanbay-section', label: 'Scan Bay 3D' },
+  { id: 'telemetry-section', label: 'VoiceCheck 3D' },
+  { id: 'footer-section', label: 'Forensics Lab' }
 ];
 
 export default function Navbar() {
@@ -17,18 +17,21 @@ export default function Navbar() {
   useEffect(() => {
     const handleScroll = () => {
       const scrollY = window.scrollY;
-      setIsScrolled(scrollY > 30);
+      setIsScrolled(scrollY > 40);
 
+      // Scroll Spy to highlight the current section with glowing dot
       const sections = NAV_ITEMS.map((item) => ({
         id: item.id,
         el: document.getElementById(item.id)
       }));
 
-      if (scrollY < 200) {
+      // If at the very top, overview is active
+      if (scrollY < 300) {
         setActiveSection('overview-section');
         return;
       }
 
+      // Find section currently in view
       const scrollCenter = scrollY + window.innerHeight * 0.35;
       for (let i = sections.length - 1; i >= 0; i--) {
         const { id, el } = sections[i];
@@ -51,7 +54,7 @@ export default function Navbar() {
     setMobileMenuOpen(false);
     if (id === 'overview-section') {
       if (window.lenis) {
-        window.lenis.scrollTo(0, { duration: 1.4 });
+        window.lenis.scrollTo(0, { duration: 1.5 });
       } else {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
@@ -60,7 +63,7 @@ export default function Navbar() {
     const el = document.getElementById(id);
     if (el) {
       if (window.lenis) {
-        window.lenis.scrollTo(el, { offset: -30, duration: 1.4 });
+        window.lenis.scrollTo(el, { offset: -30, duration: 1.5 });
       } else {
         el.scrollIntoView({ behavior: 'smooth' });
       }
@@ -71,91 +74,94 @@ export default function Navbar() {
     <header 
       className={`fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300 ${
         isScrolled 
-          ? 'bg-[#0B1519]/90 backdrop-blur-xl border-b border-[#1E333C] py-3 shadow-2xl shadow-black/60' 
-          : 'bg-transparent py-5 sm:py-6'
+          ? 'bg-[#070B13]/85 backdrop-blur-xl border-b border-cyan-500/15 py-3 shadow-2xl shadow-black/50' 
+          : 'bg-gradient-to-b from-[#070B13]/90 via-[#070B13]/40 to-transparent py-5'
       }`}
     >
-      <div className="max-w-7xl mx-auto w-full px-5 sm:px-8 lg:px-12 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto w-full px-6 sm:px-8 lg:px-12 flex items-center justify-between">
         
-        {/* Brand Monogram Squircle Badge (Matching reference image top-left badge) */}
+        {/* Brand Left: Glowing Lens Logo + Typography */}
         <div 
           className="flex items-center gap-3 group cursor-pointer" 
           onClick={() => scrollToSection('overview-section')}
         >
-          <div className="relative w-10 h-10 rounded-2xl bg-[#0F1D22] border border-[#273F49] group-hover:border-[#EE8656]/60 flex items-center justify-center shadow-lg transition-all">
-            <span className="font-editorial text-xl font-bold text-[#EE8656] tracking-tight">
-              R
-            </span>
-            <div className="absolute inset-0 rounded-2xl bg-[#EE8656]/5 group-hover:bg-[#EE8656]/15 transition-colors" />
+          <div className="relative w-9 h-9 rounded-xl bg-slate-900/80 border border-cyan-400/30 flex items-center justify-center backdrop-blur-md shadow-lg shadow-cyan-500/15 overflow-hidden p-0.5 group-hover:border-cyan-400/60 transition-all">
+            <img 
+              src="/trustlens_mark_transparent.png" 
+              alt="TrustLens Arc Logo" 
+              className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(34,211,238,0.5)] group-hover:scale-105 transition-transform" 
+            />
           </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-bold tracking-wider uppercase text-white font-sans flex items-center gap-1.5">
-              TRUSTLENS <span className="text-[#EE8656] text-[10px] px-1.5 py-0.5 rounded-full bg-[#EE8656]/15 border border-[#EE8656]/30">ARC</span>
-            </span>
-            <span className="text-[10px] text-slate-400 font-mono tracking-tight hidden sm:block">
-              Neural Media Forensics
-            </span>
-          </div>
+          <span className="font-editorial text-lg tracking-[0.2em] uppercase text-white font-semibold">
+            TrustLens <span className="text-cyan-400 font-bold">Arc</span>
+          </span>
         </div>
 
-        {/* Center/Right Capsule Pill Navigation (Exact match to reference image) */}
-        <nav className="hidden md:flex items-center gap-1 bg-[#0E1A1E]/80 backdrop-blur-xl p-1.5 rounded-full border border-[#20363F] shadow-2xl">
+        {/* Center Floating Navigation Links (Exact Match to Reference with Active Indicator Dot) */}
+        <nav className="hidden md:flex items-center gap-8 text-xs font-sans tracking-wide">
           {NAV_ITEMS.map((item) => {
             const isActive = activeSection === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => scrollToSection(item.id)}
-                className={`px-4 sm:px-5 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase transition-all duration-200 cursor-pointer ${
-                  isActive
-                    ? 'bg-[#EE8656] text-[#0B1519] shadow-[0_0_20px_rgba(238,134,86,0.4)] scale-100'
-                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                className={`transition-colors flex flex-col items-center group relative py-1 ${
+                  isActive ? 'text-white font-medium' : 'text-slate-400 hover:text-cyan-300'
                 }`}
               >
-                {item.label}
+                <span>{item.label}</span>
+                {isActive ? (
+                  <span className="w-1 h-1 rounded-full bg-cyan-400 mt-1 shadow-[0_0_6px_#00F0FF] transition-all animate-pulse" />
+                ) : (
+                  <span className="w-1 h-1 rounded-full bg-transparent mt-1 group-hover:bg-cyan-500/40 transition-all" />
+                )}
               </button>
             );
           })}
         </nav>
 
-        {/* Right Quick Action: Hotline or Lab Portal */}
+        {/* Right CTA Actions */}
         <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center justify-center w-8 h-8 rounded-full bg-slate-900/60 border border-slate-700/60 backdrop-blur-md text-cyan-400 shadow-inner">
+            <Sparkles className="w-3.5 h-3.5 animate-spin" />
+          </div>
+
           <button
             onClick={() => scrollToSection('deepfakes-section')}
-            className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-full bg-[#112127] hover:bg-[#182E36] border border-[#27404A] hover:border-[#EE8656]/50 text-slate-200 text-xs font-medium tracking-wide transition-all shadow-md group cursor-pointer"
+            className="px-5 py-2 rounded-full bg-white hover:bg-cyan-100 text-slate-950 text-xs font-semibold tracking-wide shadow-lg shadow-white/10 hover:shadow-cyan-400/25 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
           >
-            <PhoneCall className="w-3.5 h-3.5 text-[#EE8656] group-hover:scale-110 transition-transform" />
-            <span className="font-mono text-xs text-[#EE8656] font-semibold">01632 960 112</span>
+            <span>Get Started</span>
+            <ArrowRight className="w-3.5 h-3.5 ml-0.5" />
           </button>
 
           {/* Mobile Menu Hamburger Toggle */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 rounded-xl bg-[#0F1D22] border border-[#273F49] text-slate-300 hover:text-white"
+            className="md:hidden p-2 rounded-lg bg-slate-900/80 border border-cyan-500/20 text-slate-300 hover:text-white"
             aria-label="Toggle navigation menu"
           >
-            {mobileMenuOpen ? <X className="w-5 h-5 text-[#EE8656]" /> : <Menu className="w-5 h-5" />}
+            {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
       {/* Mobile Navigation Dropdown Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden bg-[#0B1519]/98 backdrop-blur-2xl border-b border-[#1E333C] px-6 py-4 flex flex-col gap-2 shadow-2xl">
+        <div className="md:hidden bg-[#070B13]/95 backdrop-blur-2xl border-b border-cyan-500/20 px-6 py-4 flex flex-col gap-3 shadow-2xl">
           {NAV_ITEMS.map((item) => {
             const isActive = activeSection === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => scrollToSection(item.id)}
-                className={`text-left text-xs font-bold tracking-wider uppercase py-2.5 px-4 rounded-xl flex items-center justify-between transition-all ${
+                className={`text-left text-sm py-2 px-3 rounded-lg flex items-center justify-between ${
                   isActive 
-                    ? 'bg-[#EE8656] text-[#0B1519] font-bold shadow-[0_0_15px_rgba(238,134,86,0.4)]' 
-                    : 'text-slate-300 hover:text-white hover:bg-white/5'
+                    ? 'bg-cyan-500/15 text-cyan-300 font-semibold border border-cyan-500/30' 
+                    : 'text-slate-300 hover:text-white hover:bg-slate-900/50'
                 }`}
               >
                 <span>{item.label}</span>
-                {isActive && <span className="w-2 h-2 rounded-full bg-[#0B1519]" />}
+                {isActive && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#00F0FF]" />}
               </button>
             );
           })}
@@ -164,3 +170,4 @@ export default function Navbar() {
     </header>
   );
 }
+
