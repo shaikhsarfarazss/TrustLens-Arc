@@ -22,7 +22,7 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
     let animId;
     let isDisposed = false;
 
-    // Emissive eye textures for blinking & expressive emotes
+    // Emissive eye textures for blinking, game emotes & expressions
     let screenMat = null;
     const texLoader = new THREE.TextureLoader();
     const openTex = texLoader.load('/robot_emissive_open.jpg');
@@ -39,6 +39,10 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
     dizzyTex.flipY = false;
     const scanTex = texLoader.load('/robot_emissive_scan.jpg');
     scanTex.flipY = false;
+    const combatTex = texLoader.load('/robot_emissive_combat.jpg');
+    combatTex.flipY = false;
+    const hypeTex = texLoader.load('/robot_emissive_hype.jpg');
+    hypeTex.flipY = false;
 
     const blinkTextures = { openTex, halfTex, blinkTex };
 
@@ -47,14 +51,19 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
     let isBlinking = false;
     let isDoubleBlink = false;
 
-    // Fast Head-Only Tracking State (Body stays completely still)
+    // Multi-Joint Hierarchy Nodes (Root, Upper Body Spine, Neck Head)
     let rootGroupRef = null;
+    let upperBodyPivotRef = null;
     let headPivotRef = null;
+    let modelRef = null;
+    let baseModelScale = 1.0;
+    const BASE_Y = -1.26;
+
+    // Gaze Cursor Tracking
     let targetHeadRotX = 0;
     let targetHeadRotY = 0;
     let curHeadRotX = 0;
     let curHeadRotY = 0;
-    const BASE_Y = -1.26;
 
     // Emote State Machine & Timers
     let currentEmote = null;
@@ -79,12 +88,12 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
       emoteStartTime = t;
       setActiveEmote(name);
 
-      if (name === 'happy') emoteDuration = 2.4;
-      else if (name === 'curious') emoteDuration = 2.4;
-      else if (name === 'scan') emoteDuration = 2.8;
-      else if (name === 'wink') emoteDuration = 1.8;
+      if (name === 'booyah') emoteDuration = 5.2;
+      else if (name === 'floss') emoteDuration = 5.0;
+      else if (name === 'dab') emoteDuration = 4.4;
+      else if (name === 'breakdance') emoteDuration = 4.6;
       else if (name === 'dizzy') emoteDuration = 5.0;
-      else emoteDuration = 2.0;
+      else emoteDuration = 2.5;
 
       nextIdleEmoteTime = t + 55.0 + Math.random() * 25.0;
     };
@@ -132,7 +141,7 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
     backRimLight.position.set(0, 1.0, -2);
     scene.add(backRimLight);
 
-    // 3. Load GLB Model and Position Still in Center
+    // 3. Load GLB Model and Build Articulated Multi-Joint Rig
     const loader = new GLTFLoader();
     loader.load(
       '/mini_robot.glb',
@@ -155,7 +164,7 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
           }
         }
 
-        // Setup isolated screen blinking texture (modifies ONLY screen face)
+        // Setup isolated screen emissive material
         if (screenObj) {
           screenObj.traverse((child) => {
             if (child.isMesh) {
@@ -173,16 +182,16 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
           });
         }
 
-        // Measure true bounding box
+        // Measure bounding box for accurate viewport scaling
         const box = new THREE.Box3().setFromObject(model);
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
 
         const TARGET_HEIGHT = 2.26;
-        const scale = TARGET_HEIGHT / (size.y || 1);
+        baseModelScale = TARGET_HEIGHT / (size.y || 1);
 
         const rootGroup = new THREE.Group();
-        rootGroup.scale.set(scale, scale, scale);
+        rootGroup.scale.set(baseModelScale, baseModelScale, baseModelScale);
 
         model.position.x = -center.x;
         model.position.y = -box.min.y;
@@ -192,13 +201,12 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
         rootGroup.position.set(0, BASE_Y, 0);
         scene.add(rootGroup);
         rootGroupRef = rootGroup;
+        modelRef = model;
 
-        // Setup isolated Head Pivot: moves ONLY head, body stays 100% still
-        const headPivot = new THREE.Group();
+        // A. Measure head bounding box before restructuring
         const headBox = new THREE.Box3();
         const headPartNames = ['head', 'screen', 'cap', 'ears', 'ears_part_1', 'ears_part_2'];
         const headParts = [];
-
         headPartNames.forEach((name) => {
           const part = model.getObjectByName(name);
           if (part) {
@@ -207,10 +215,31 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
           }
         });
 
+        // B. Setup Upper Body Spine Pivot (Torso, Shoulders, Arms, Backpack)
+        const upperPivot = new THREE.Group();
+        // Pivot center at spine/waist
+        upperPivot.position.set(0, 0.76, 0);
+        model.add(upperPivot);
+
+        const upperPartNames = [
+          'body', 'bag', 'bag.001',
+          'arms_high', 'arms_high.002', 'arms_high.003',
+          'arm_joints', 'arm_joints_2', 'arm_joint_part',
+          'neck'
+        ];
+        upperPartNames.forEach((name) => {
+          const part = model.getObjectByName(name);
+          if (part) upperPivot.attach(part);
+        });
+        upperBodyPivotRef = upperPivot;
+
+        // C. Setup Head Pivot attached to Upper Body
+        const headPivot = new THREE.Group();
         const headCenter = new THREE.Vector3();
         headBox.getCenter(headCenter);
+        // Position pivot at the neck joint
         headPivot.position.set(headCenter.x, headBox.min.y + 0.12, headCenter.z);
-        model.add(headPivot);
+        upperPivot.add(headPivot);
 
         headParts.forEach((part) => {
           headPivot.attach(part);
@@ -230,7 +259,7 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
       }
     );
 
-    // 4. Animation Loop with Lifelike Screen Blinking, Emotes & Fall Kinematics
+    // 4. Animation Loop with Full-Body Game Choreographies
     const animate = () => {
       animId = requestAnimationFrame(animate);
       if (!isVisibleRef.current) return;
@@ -242,87 +271,319 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
         continuousMoveDuration = 0;
       }
 
-      // Periodic Idle Emote (triggers naturally every 50-80s when user idle > 5s)
+      // Periodic Idle Game Emote (triggers naturally every 50-80s when user idle > 5s)
       if (!currentEmote && (elapsedTime - lastInteractionTime > 5.0) && elapsedTime >= nextIdleEmoteTime) {
-        const idlePool = ['curious', 'happy', 'scan', 'wink'];
-        const picked = idlePool[Math.floor(Math.random() * idlePool.length)];
+        const gamePool = ['booyah', 'floss', 'dab', 'breakdance'];
+        const picked = gamePool[Math.floor(Math.random() * gamePool.length)];
         triggerEmote(picked);
       }
 
-      // Ultra-Fast Head-Only Gaze Tracking (snappy lerp 0.35)
+      // Ultra-Fast Head-Only Gaze Tracking (Lerp 0.35)
       curHeadRotX += (targetHeadRotX - curHeadRotX) * 0.35;
       curHeadRotY += (targetHeadRotY - curHeadRotY) * 0.35;
 
-      // Handle Active Emotes
+      // Handle Active Game Emotes
       if (currentEmote) {
         const eDt = elapsedTime - emoteStartTime;
 
-        if (currentEmote === 'happy') {
-          if (screenMat && screenMat.emissiveMap !== happyTex) {
-            screenMat.emissiveMap = happyTex;
-            screenMat.needsUpdate = true;
-          }
-          const nod = Math.sin(eDt * 14) * 0.14 * Math.exp(-eDt * 0.7);
-          const hop = Math.abs(Math.sin(eDt * 14)) * 0.05 * Math.exp(-eDt * 0.7);
-          if (headPivotRef) {
-            headPivotRef.rotation.x = curHeadRotX + nod;
-            headPivotRef.rotation.y = curHeadRotY;
-            headPivotRef.rotation.z = 0;
-          }
-          if (rootGroupRef) {
-            rootGroupRef.position.y = BASE_Y + hop;
-          }
-        } else if (currentEmote === 'curious') {
-          if (screenMat && screenMat.emissiveMap !== openTex) {
-            screenMat.emissiveMap = openTex;
-            screenMat.needsUpdate = true;
-          }
-          let tiltZ = 0;
-          let tiltX = 0;
-          if (eDt < 0.6) {
-            const p = eDt / 0.6;
-            tiltZ = 0.32 * Math.sin(p * Math.PI * 0.5);
-            tiltX = -0.15 * Math.sin(p * Math.PI * 0.5);
-          } else if (eDt < 1.8) {
-            tiltZ = 0.32 + Math.sin(eDt * 3) * 0.02;
-            tiltX = -0.15;
-          } else {
-            const p = (eDt - 1.8) / 0.6;
-            tiltZ = 0.32 * (1 - Math.sin(p * Math.PI * 0.5));
-            tiltX = -0.15 * (1 - Math.sin(p * Math.PI * 0.5));
-          }
-          if (headPivotRef) {
-            headPivotRef.rotation.z = tiltZ;
-            headPivotRef.rotation.x = curHeadRotX + tiltX;
-            headPivotRef.rotation.y = curHeadRotY + 0.12;
-          }
-        } else if (currentEmote === 'scan') {
-          if (screenMat && screenMat.emissiveMap !== scanTex) {
-            screenMat.emissiveMap = scanTex;
-            screenMat.needsUpdate = true;
-          }
-          const sweep = Math.sin(eDt * 3.8) * 0.55;
-          if (headPivotRef) {
-            headPivotRef.rotation.y = sweep;
-            headPivotRef.rotation.x = -0.06;
-            headPivotRef.rotation.z = 0;
-          }
-        } else if (currentEmote === 'wink') {
-          if (screenMat) {
-            const targetTex = eDt < 0.15 ? halfTex : eDt < 1.4 ? winkTex : eDt < 1.6 ? halfTex : openTex;
-            if (screenMat.emissiveMap !== targetTex) {
-              screenMat.emissiveMap = targetTex;
+        // ==========================================
+        // 1. FREE FIRE: "BOOYAH!" LEAP & GROUND SLAM
+        // ==========================================
+        if (currentEmote === 'booyah') {
+          if (eDt < 0.9) {
+            // Phase 1: Deep Anticipation Squat & Coil
+            const p = eDt / 0.9;
+            const ease = Math.sin(p * Math.PI * 0.5);
+            if (screenMat && screenMat.emissiveMap !== combatTex) {
+              screenMat.emissiveMap = combatTex;
+              screenMat.needsUpdate = true;
+            }
+            if (rootGroupRef) {
+              rootGroupRef.position.y = BASE_Y - 0.28 * ease;
+              rootGroupRef.scale.set(
+                baseModelScale * (1 + 0.16 * ease),
+                baseModelScale * (1 - 0.22 * ease),
+                baseModelScale * (1 + 0.16 * ease)
+              );
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(0.32 * ease, 0, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(-0.15 * ease, 0, 0);
+            }
+          } else if (eDt < 2.0) {
+            // Phase 2: Explosive Skyward Leap & Fist Pump
+            const t = (eDt - 0.9) / 1.1;
+            const jump = Math.sin(t * Math.PI);
+            if (screenMat && screenMat.emissiveMap !== hypeTex) {
+              screenMat.emissiveMap = hypeTex;
+              screenMat.needsUpdate = true;
+            }
+            if (rootGroupRef) {
+              rootGroupRef.position.y = BASE_Y + 0.88 * jump;
+              rootGroupRef.rotation.y = Math.sin(t * Math.PI) * 0.55;
+              rootGroupRef.scale.set(
+                baseModelScale * (1 - 0.12 * jump),
+                baseModelScale * (1 + 0.22 * jump),
+                baseModelScale * (1 - 0.12 * jump)
+              );
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(-0.35 * jump, 0, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(-0.38 * jump, 0, 0);
+            }
+          } else if (eDt < 2.8) {
+            // Phase 3: Superhero 3-Point Ground Slam
+            const t = (eDt - 2.0) / 0.8;
+            const slamProgress = Math.min(1.0, t / 0.25);
+            const bounce = (1 - slamProgress) * 0.08;
+            if (rootGroupRef) {
+              rootGroupRef.position.y = BASE_Y - 0.32 * (1 - t * 0.7) + bounce;
+              rootGroupRef.rotation.y = 0;
+              rootGroupRef.scale.set(
+                baseModelScale * (1 + 0.24 * (1 - t)),
+                baseModelScale * (1 - 0.28 * (1 - t)),
+                baseModelScale * (1 + 0.24 * (1 - t))
+              );
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(0.52 * (1 - t * 0.8), 0, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(0.28 * (1 - t * 1.5), 0, 0);
+            }
+          } else if (eDt < 5.2) {
+            // Phase 4: Stand Up & Shoulder Swagger Dust-Off
+            const t = (eDt - 2.8) / 2.4;
+            const s = 1 - Math.pow(1 - Math.min(1.0, t * 1.5), 3);
+            if (rootGroupRef) {
+              rootGroupRef.position.y = (BASE_Y - 0.32 * 0.3) + (0.32 * 0.3) * s;
+              rootGroupRef.rotation.set(0, 0, 0);
+              rootGroupRef.scale.set(baseModelScale, baseModelScale, baseModelScale);
+            }
+            if (upperBodyPivotRef) {
+              const dustOff = Math.sin(t * 16) * 0.14 * Math.exp(-t * 2.2);
+              upperBodyPivotRef.rotation.set(0, 0, dustOff);
+            }
+            if (headPivotRef) {
+              const nod = Math.sin(t * 12) * 0.12 * Math.exp(-t * 2.0);
+              headPivotRef.rotation.set(nod, 0, 0);
+            }
+            if (t > 0.6 && screenMat && screenMat.emissiveMap !== openTex) {
+              screenMat.emissiveMap = openTex;
               screenMat.needsUpdate = true;
             }
           }
-          const perkZ = Math.sin(eDt * 5) * 0.18 * Math.exp(-eDt * 0.9);
-          if (headPivotRef) {
-            headPivotRef.rotation.z = perkZ;
-            headPivotRef.rotation.x = curHeadRotX - 0.12;
-            headPivotRef.rotation.y = curHeadRotY;
+
+        // ==========================================
+        // 2. FORTNITE: "CYBER FLOSS" RHYTHMIC DANCE
+        // ==========================================
+        } else if (currentEmote === 'floss') {
+          if (eDt < 4.2) {
+            // Active Floss Motion at 135 BPM (omega = 13.5 rad/s)
+            const omega = 13.5;
+            const swingY = Math.sin(eDt * omega) * 0.44;
+            const swayZ = Math.cos(eDt * omega) * 0.20;
+            const hipX = -Math.sin(eDt * omega) * 0.13;
+            const footHop = Math.abs(Math.sin(eDt * omega)) * 0.08;
+
+            const useTex = Math.sin(eDt * 3) > 0 ? happyTex : hypeTex;
+            if (screenMat && screenMat.emissiveMap !== useTex) {
+              screenMat.emissiveMap = useTex;
+              screenMat.needsUpdate = true;
+            }
+
+            if (rootGroupRef) {
+              rootGroupRef.position.x = hipX;
+              rootGroupRef.position.y = BASE_Y + footHop;
+              rootGroupRef.rotation.z = -swayZ * 0.35;
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.y = swingY;
+              upperBodyPivotRef.rotation.z = swayZ;
+              upperBodyPivotRef.rotation.x = Math.sin(eDt * omega * 2) * 0.06;
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.y = -swingY * 0.4;
+              headPivotRef.rotation.x = curHeadRotX + 0.08;
+              headPivotRef.rotation.z = -swayZ * 0.2;
+            }
+          } else {
+            // Final Freeze-Frame Flex Pose & Cheeky Wink
+            if (screenMat && screenMat.emissiveMap !== winkTex) {
+              screenMat.emissiveMap = winkTex;
+              screenMat.needsUpdate = true;
+            }
+            if (rootGroupRef) {
+              rootGroupRef.position.set(0, BASE_Y, 0);
+              rootGroupRef.rotation.set(0, 0, 0);
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(-0.15, 0.24, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(-0.12, 0.12, 0.15);
+            }
           }
+
+        // ==========================================
+        // 3. BGMI / PUBG: COMBAT STRIKE & CYBER DAB
+        // ==========================================
+        } else if (currentEmote === 'dab') {
+          if (eDt < 0.6) {
+            // Phase 1: Martial Arts Boxing Stance
+            if (screenMat && screenMat.emissiveMap !== combatTex) {
+              screenMat.emissiveMap = combatTex;
+              screenMat.needsUpdate = true;
+            }
+            const shuffle = Math.abs(Math.sin(eDt * 22)) * 0.04;
+            if (rootGroupRef) {
+              rootGroupRef.position.y = BASE_Y + shuffle;
+              rootGroupRef.position.z = 0.05;
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(0.18, Math.sin(eDt * 12) * 0.16, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(0.08, 0, 0);
+            }
+          } else if (eDt < 1.7) {
+            // Phase 2: Triple Punch Combo
+            const sub = eDt - 0.6;
+            if (sub < 0.35) {
+              // Strike 1: Left Hook
+              const p = sub / 0.35;
+              if (upperBodyPivotRef) upperBodyPivotRef.rotation.set(0.12, 0.52 * Math.sin(p * Math.PI), 0);
+              if (rootGroupRef) rootGroupRef.position.z = 0.05 + 0.12 * Math.sin(p * Math.PI);
+            } else if (sub < 0.70) {
+              // Strike 2: Right Uppercut
+              const p = (sub - 0.35) / 0.35;
+              if (upperBodyPivotRef) upperBodyPivotRef.rotation.set(-0.25 * Math.sin(p * Math.PI), -0.55 * Math.sin(p * Math.PI), 0);
+              if (rootGroupRef) rootGroupRef.position.y = BASE_Y + 0.10 * Math.sin(p * Math.PI);
+            } else {
+              // Strike 3: Direct Cross Snap
+              const p = (sub - 0.70) / 0.40;
+              if (upperBodyPivotRef) upperBodyPivotRef.rotation.set(0.24, 0.40 * Math.sin(p * Math.PI), 0);
+              if (rootGroupRef) rootGroupRef.position.z = 0.05 + 0.15 * Math.sin(p * Math.PI);
+            }
+          } else if (eDt < 3.3) {
+            // Phase 3: The Cyber Dab!
+            if (screenMat && screenMat.emissiveMap !== hypeTex) {
+              screenMat.emissiveMap = hypeTex;
+              screenMat.needsUpdate = true;
+            }
+            if (rootGroupRef) {
+              rootGroupRef.position.set(0, BASE_Y - 0.10, 0);
+              rootGroupRef.rotation.set(0, 0, 0);
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(0.26, 0.34, -0.48);
+            }
+            if (headPivotRef) {
+              // Head tucked in into elbow fold
+              headPivotRef.rotation.set(0.36, 0, -0.32);
+            }
+          } else if (eDt < 4.4) {
+            // Phase 4: Martial Arts Bow & Recover
+            const t = (eDt - 3.3) / 1.1;
+            const s = 1 - Math.pow(1 - t, 3);
+            if (rootGroupRef) {
+              rootGroupRef.position.set(0, BASE_Y, 0);
+            }
+            if (upperBodyPivotRef) {
+              const bow = Math.sin(t * Math.PI) * 0.28;
+              upperBodyPivotRef.rotation.set(bow * (1 - s), 0, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(0, 0, 0);
+            }
+            if (screenMat && screenMat.emissiveMap !== openTex) {
+              screenMat.emissiveMap = openTex;
+              screenMat.needsUpdate = true;
+            }
+          }
+
+        // ==========================================
+        // 4. FREE FIRE / FORTNITE: 360 POP-LOCK SPIN
+        // ==========================================
+        } else if (currentEmote === 'breakdance') {
+          if (eDt < 1.2) {
+            // Phase 1: Electric Wave Pop & Lock
+            if (screenMat && screenMat.emissiveMap !== scanTex) {
+              screenMat.emissiveMap = scanTex;
+              screenMat.needsUpdate = true;
+            }
+            const wave = Math.sin(eDt * 16) * 0.24;
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(Math.cos(eDt * 16) * 0.10, 0, wave);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(0, 0, -wave * 0.5);
+            }
+            if (rootGroupRef) {
+              rootGroupRef.position.y = BASE_Y + Math.abs(Math.sin(eDt * 16)) * 0.03;
+            }
+          } else if (eDt < 2.3) {
+            // Phase 2: Airborne 360 Spin
+            const t = (eDt - 1.2) / 1.1;
+            const leap = Math.sin(t * Math.PI);
+            if (screenMat && screenMat.emissiveMap !== hypeTex) {
+              screenMat.emissiveMap = hypeTex;
+              screenMat.needsUpdate = true;
+            }
+            if (rootGroupRef) {
+              rootGroupRef.position.y = BASE_Y + 0.68 * leap;
+              rootGroupRef.rotation.y = t * Math.PI * 2;
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(-0.15 * leap, 0, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(0, 0, 0);
+            }
+          } else if (eDt < 3.6) {
+            // Phase 3: Freeze-Frame Power Flex
+            if (screenMat && screenMat.emissiveMap !== combatTex) {
+              screenMat.emissiveMap = combatTex;
+              screenMat.needsUpdate = true;
+            }
+            if (rootGroupRef) {
+              rootGroupRef.position.set(0, BASE_Y - 0.12, 0);
+              rootGroupRef.rotation.set(0, 0, 0);
+              rootGroupRef.scale.set(baseModelScale * 1.12, baseModelScale * 0.92, baseModelScale * 1.12);
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(-0.22, 0, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(-0.10, 0, 0);
+            }
+          } else if (eDt < 4.6) {
+            // Phase 4: Relax & Reset
+            const t = (eDt - 3.6) / 1.0;
+            if (rootGroupRef) {
+              rootGroupRef.position.set(0, BASE_Y, 0);
+              rootGroupRef.scale.set(baseModelScale, baseModelScale, baseModelScale);
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(0, 0, 0);
+            }
+            if (headPivotRef) {
+              headPivotRef.rotation.set(0, 0, 0);
+            }
+            if (screenMat && screenMat.emissiveMap !== openTex) {
+              screenMat.emissiveMap = openTex;
+              screenMat.needsUpdate = true;
+            }
+          }
+
+        // ==========================================
+        // 5. EASTER EGG: DIZZY TUMBLE FALL & STAND UP
+        // ==========================================
         } else if (currentEmote === 'dizzy') {
-          // Dizzy Easter Egg Sequence: Wobble -> Fall -> Dazed -> Stand up
           if (screenMat && screenMat.emissiveMap !== dizzyTex && eDt < 3.8) {
             screenMat.emissiveMap = dizzyTex;
             screenMat.needsUpdate = true;
@@ -337,8 +598,11 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
               headPivotRef.rotation.z = Math.cos(eDt * freq) * 0.28;
               headPivotRef.rotation.x = Math.sin(eDt * freq * 0.5) * 0.22;
             }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.z = Math.sin(eDt * 8) * 0.15 * p;
+            }
             if (rootGroupRef) {
-              rootGroupRef.rotation.z = Math.sin(eDt * 9) * 0.12 * p;
+              rootGroupRef.rotation.z = Math.sin(eDt * 9) * 0.10 * p;
               rootGroupRef.rotation.x = 0;
               rootGroupRef.position.y = BASE_Y;
             }
@@ -355,6 +619,9 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
               rootGroupRef.rotation.x = fallAngle * easeFall;
               rootGroupRef.rotation.z = (1 - easeFall) * 0.1;
               rootGroupRef.position.y = BASE_Y - 0.52 * easeFall + bounce;
+            }
+            if (upperBodyPivotRef) {
+              upperBodyPivotRef.rotation.set(0, 0, 0);
             }
             if (headPivotRef) {
               headPivotRef.rotation.set(0.1, 0, 0);
@@ -396,13 +663,17 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
           }
         }
 
-        // Check if emote ended
+        // Emote Completion
         if (eDt >= emoteDuration) {
           currentEmote = null;
           setActiveEmote(null);
           if (rootGroupRef) {
             rootGroupRef.rotation.set(0, 0, 0);
             rootGroupRef.position.set(0, BASE_Y, 0);
+            rootGroupRef.scale.set(baseModelScale, baseModelScale, baseModelScale);
+          }
+          if (upperBodyPivotRef) {
+            upperBodyPivotRef.rotation.set(0, 0, 0);
           }
           if (headPivotRef) {
             headPivotRef.rotation.set(0, 0, 0);
@@ -413,11 +684,14 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
           }
         }
       } else {
-        // Normal state: Lifelike Eye Blink logic + cursor gaze tracking
+        // Normal State: Lifelike Eye Blink logic + fast head cursor tracking
         if (headPivotRef) {
           headPivotRef.rotation.x = curHeadRotX;
           headPivotRef.rotation.y = curHeadRotY;
           headPivotRef.rotation.z = 0;
+        }
+        if (upperBodyPivotRef) {
+          upperBodyPivotRef.rotation.set(0, 0, 0);
         }
 
         if (screenMat && blinkTextures) {
@@ -543,6 +817,8 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
       winkTex.dispose();
       dizzyTex.dispose();
       scanTex.dispose();
+      combatTex.dispose();
+      hypeTex.dispose();
       renderer.dispose();
       if (container && renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
@@ -564,66 +840,76 @@ export default function RobotViewer({ onEnterDashboard, isVisible = true }) {
       {/* 3D Canvas Mount (Full Screen) */}
       <div ref={mountRef} className="absolute inset-0 w-full h-full z-10 pointer-events-none" />
 
-      {/* Interactive Emote Actions Toolbar (Top Right) */}
-      <div className="absolute top-6 right-6 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto">
+      {/* Quick Interactive Game Emotes Toolbar (Top Right) */}
+      <div className="absolute top-6 right-6 z-30 flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-900/85 backdrop-blur-md border border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.5)] pointer-events-auto">
         <div className="flex items-center gap-1 px-2 text-[11px] font-mono font-semibold text-slate-400 border-r border-slate-700/60 mr-0.5">
           <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-          <span className="hidden sm:inline">Emotes</span>
+          <span className="hidden sm:inline">Game Emotes</span>
         </div>
+        
+        {/* Free Fire: Booyah Leap & Ground Slam */}
         <button
-          onClick={() => handleManualEmote('happy')}
-          title="Happy Double Nod"
-          className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
-            activeEmote === 'happy'
-              ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 hover:border-cyan-500/40'
+          onClick={() => handleManualEmote('booyah')}
+          title="Free Fire - Hero Booyah Leap & Ground Slam"
+          className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            activeEmote === 'booyah'
+              ? 'bg-amber-500/30 text-amber-300 border border-amber-400 shadow-[0_0_14px_rgba(245,158,11,0.5)] scale-105'
+              : 'bg-slate-800/80 hover:bg-slate-700/80 text-amber-300/90 border border-amber-500/30 hover:border-amber-400/60'
           }`}
         >
-          <span>😊</span>
-          <span className="hidden md:inline">Happy</span>
+          <span>💥</span>
+          <span className="hidden md:inline">Booyah</span>
         </button>
+
+        {/* Fortnite: Cyber Floss Dance */}
         <button
-          onClick={() => handleManualEmote('curious')}
-          title="Curious Head Tilt"
-          className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
-            activeEmote === 'curious'
-              ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 hover:border-cyan-500/40'
+          onClick={() => handleManualEmote('floss')}
+          title="Fortnite - Cyber Floss Rhythmic Dance"
+          className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            activeEmote === 'floss'
+              ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400 shadow-[0_0_14px_rgba(0,240,255,0.5)] scale-105'
+              : 'bg-slate-800/80 hover:bg-slate-700/80 text-cyan-300/90 border border-cyan-500/30 hover:border-cyan-400/60'
           }`}
         >
-          <span>🤔</span>
-          <span className="hidden md:inline">Curious</span>
+          <span>⚡</span>
+          <span className="hidden md:inline">Floss</span>
         </button>
+
+        {/* BGMI: Combat Strike & Cyber Dab */}
         <button
-          onClick={() => handleManualEmote('scan')}
-          title="Radar Sweep Scan"
-          className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
-            activeEmote === 'scan'
-              ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 hover:border-cyan-500/40'
+          onClick={() => handleManualEmote('dab')}
+          title="BGMI / PUBG - Combat Strike Combo & Cyber Dab"
+          className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            activeEmote === 'dab'
+              ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-400 shadow-[0_0_14px_rgba(16,185,129,0.5)] scale-105'
+              : 'bg-slate-800/80 hover:bg-slate-700/80 text-emerald-300/90 border border-emerald-500/30 hover:border-emerald-400/60'
           }`}
         >
-          <span>📡</span>
-          <span className="hidden md:inline">Scan</span>
+          <span>🥋</span>
+          <span className="hidden md:inline">Dab Strike</span>
         </button>
+
+        {/* Free Fire / Fortnite: 360 Spin & Pop-Lock */}
         <button
-          onClick={() => handleManualEmote('wink')}
-          title="Cheeky Wink"
-          className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
-            activeEmote === 'wink'
-              ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-400 shadow-[0_0_12px_rgba(0,240,255,0.4)]'
-              : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/50 hover:border-cyan-500/40'
+          onClick={() => handleManualEmote('breakdance')}
+          title="Fortnite/Free Fire - 360 Airborne Spin & Pop-Lock"
+          className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+            activeEmote === 'breakdance'
+              ? 'bg-purple-500/30 text-purple-300 border border-purple-400 shadow-[0_0_14px_rgba(168,85,247,0.5)] scale-105'
+              : 'bg-slate-800/80 hover:bg-slate-700/80 text-purple-300/90 border border-purple-500/30 hover:border-purple-400/60'
           }`}
         >
-          <span>😉</span>
-          <span className="hidden md:inline">Wink</span>
+          <span>🕺</span>
+          <span className="hidden md:inline">360 Spin</span>
         </button>
+
+        {/* Easter Egg: Dizzy Tumble Fall */}
         <button
           onClick={() => handleManualEmote('dizzy')}
           title="Dizzy & Tumble Fall Easter Egg (or continuously spin cursor for 4s!)"
-          className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
+          className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
             activeEmote === 'dizzy'
-              ? 'bg-rose-500/30 text-rose-300 border border-rose-400 shadow-[0_0_14px_rgba(244,63,94,0.5)]'
+              ? 'bg-rose-500/30 text-rose-300 border border-rose-400 shadow-[0_0_14px_rgba(244,63,94,0.5)] scale-105'
               : 'bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-500/30 hover:border-rose-400/60'
           }`}
         >
