@@ -49,7 +49,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#070B13] text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div className="min-h-screen bg-[#0B1519] text-slate-100 selection:bg-[#EE8656]/30 selection:text-[#FA9C72]">
       
       {/* Top Floating Glass Navigation Bar (Updated for Recent Forensic Showcases) */}
       <Navbar />

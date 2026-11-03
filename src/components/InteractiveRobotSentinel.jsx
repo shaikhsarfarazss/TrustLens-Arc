@@ -46,8 +46,8 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
         floorLightRef.current.color.setHex(0x00f0ff);
         floorLightRef.current.intensity = 4.5;
       } else {
-        rimLightRef.current.color.setHex(0x00f0ff);
-        floorLightRef.current.color.setHex(0x00c4ff);
+        rimLightRef.current.color.setHex(0xEE8656);
+        floorLightRef.current.color.setHex(0xFA9C72);
         floorLightRef.current.intensity = 2.8;
       }
     }
@@ -708,8 +708,8 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
             : status === 'authentic' 
             ? 'bg-emerald-500/30' 
             : status === 'scanning'
-            ? 'bg-cyan-400/40 animate-pulse'
-            : 'bg-cyan-500/20'
+            ? 'bg-[#EE8656]/40 animate-pulse'
+            : 'bg-[#EE8656]/20'
         }`} 
       />
 
@@ -720,16 +720,16 @@ export default function InteractiveRobotSentinel({ status = 'idle', className = 
             ? 'border-red-500/60 shadow-[0_0_25px_rgba(239,68,68,0.5)]'
             : status === 'authentic'
             ? 'border-emerald-500/60 shadow-[0_0_25px_rgba(16,185,129,0.5)]'
-            : 'border-cyan-400/40 shadow-[0_0_25px_rgba(0,240,255,0.35)]'
+            : 'border-[#EE8656]/40 shadow-[0_0_25px_rgba(238,134,86,0.35)]'
         }`}
       />
-      <div className="absolute bottom-8 sm:bottom-10 w-44 sm:w-56 h-6 rounded-[100%] border border-dashed border-cyan-300/30 animate-spin pointer-events-none" style={{ animationDuration: '24s' }} />
+      <div className="absolute bottom-8 sm:bottom-10 w-44 sm:w-56 h-6 rounded-[100%] border border-dashed border-[#EE8656]/30 animate-spin pointer-events-none" style={{ animationDuration: '24s' }} />
 
       {/* Top Floating Header & Reset on Robot View */}
       <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-950/80 border border-cyan-400/30 text-cyan-300 text-[11px] font-mono backdrop-blur-md shadow-md">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0B1519]/90 border border-[#EE8656]/30 text-[#FA9C72] text-[11px] font-mono backdrop-blur-md shadow-md">
           <span className={`w-2 h-2 rounded-full ${
-            status === 'deepfake' ? 'bg-red-500 animate-ping' : status === 'authentic' ? 'bg-emerald-400' : 'bg-cyan-400 animate-pulse'
+            status === 'deepfake' ? 'bg-red-500 animate-ping' : status === 'authentic' ? 'bg-emerald-400' : 'bg-[#EE8656] animate-pulse'
           }`}></span>
           <span>ARC SENTINEL v3.8</span>
           <span className="text-slate-500">•</span>

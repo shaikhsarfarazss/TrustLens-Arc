@@ -1,313 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { 
+  ArrowRight, 
+  PhoneCall, 
+  ShieldCheck, 
   Sparkles, 
-  ArrowRight,
-  Play,
-  ChevronDown
+  Layers, 
+  ExternalLink 
 } from 'lucide-react';
-import NeuralOrb from './NeuralOrb.jsx';
-
-const TOTAL_FRAMES = 240;
-
-const getFrameUrl = (index) => {
-  const num = String(index + 1).padStart(3, '0');
-  return `/frames_hd/frame_${num}.webp`;
-};
+import InteractiveRobotSentinel from './InteractiveRobotSentinel.jsx';
 
 export default function HeroSection({ onEnterDashboard }) {
-  const containerRef = useRef(null);
-  const canvasRef = useRef(null);
-  const imagesRef = useRef(new Array(TOTAL_FRAMES));
-  const lastAvailableFrameRef = useRef(null);
-  
-  // Animation & Physics Tracking (Ref-based for 120 FPS / 60 FPS zero-jank scrubbing)
-  const smoothProgressRef = useRef(0);
-  const targetProgressRef = useRef(0);
-  const lastDrawnFrameRef = useRef(-1);
-  const rafIdRef = useRef(null);
-
-  // DOM Refs for Direct Style Mutation (Zero React Re-render Overhead)
-  const corridorOverlayRef = useRef(null);
-  const skyCardRef = useRef(null);
-  const stepperRef = useRef(null);
-  const bottomWidgetRef = useRef(null);
-  const bottomCaptionRef = useRef(null);
-  const commandCenterOverlayRef = useRef(null);
-  const flightBadgeRef = useRef(null);
-  const flightPctTextRef = useRef(null);
-
-  // Stepper Indicator Refs
-  const step01LineRef = useRef(null);
-  const step01TextRef = useRef(null);
-  const step02TextRef = useRef(null);
-  const step03TextRef = useRef(null);
-
-  const [isReady, setIsReady] = useState(false);
-  const [isOrbActive, setIsOrbActive] = useState(false);
-  const isOrbActiveRef = useRef(false);
-
-  // 1. High-Performance Progressive Asynchronous Frame Decoder (createImageBitmap)
-  useEffect(() => {
-    let isCancelled = false;
-    const images = imagesRef.current;
-
-    // Helper: Decode image off the main thread using createImageBitmap for zero micro-stutter
-    const decodeFrame = async (idx) => {
-      const url = getFrameUrl(idx);
-      if (typeof window !== 'undefined' && 'createImageBitmap' in window) {
-        try {
-          const res = await fetch(url);
-          const blob = await res.blob();
-          const bitmap = await createImageBitmap(blob);
-          if (isCancelled) return null;
-          images[idx] = bitmap;
-          if (!lastAvailableFrameRef.current) lastAvailableFrameRef.current = bitmap;
-          return bitmap;
-        } catch {}
-      }
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.src = url;
-        img.onload = () => {
-          if (isCancelled) return resolve(null);
-          images[idx] = img;
-          if (!lastAvailableFrameRef.current) lastAvailableFrameRef.current = img;
-          resolve(img);
-        };
-        img.onerror = () => resolve(null);
-      });
-    };
-
-    // Load Frame 1 immediately for instant first paint
-    decodeFrame(0).then((first) => {
-      if (isCancelled || !first) return;
-      setIsReady(true);
-      drawFrame(0);
-      lastDrawnFrameRef.current = 0;
-    });
-
-    // Prioritize keyframes every 4th frame for instant scrub response
-    const keyframes = [];
-    for (let i = 4; i < TOTAL_FRAMES; i += 4) keyframes.push(i);
-    const others = [];
-    for (let i = 1; i < TOTAL_FRAMES; i++) {
-      if (!keyframes.includes(i)) others.push(i);
-    }
-
-    const queue = [...keyframes, ...others];
-    let queueIdx = 0;
-    const MAX_CONCURRENT = 10;
-    let activeWorkers = 0;
-
-    const pumpQueue = () => {
-      if (isCancelled) return;
-      while (activeWorkers < MAX_CONCURRENT && queueIdx < queue.length) {
-        const frameIdx = queue[queueIdx++];
-        activeWorkers++;
-
-        decodeFrame(frameIdx).then(() => {
-          if (isCancelled) return;
-          activeWorkers--;
-          const curFrame = lastDrawnFrameRef.current;
-          if (curFrame >= 0 && Math.abs(curFrame - frameIdx) <= 1) {
-            drawFrame(curFrame);
-          }
-          pumpQueue();
-        });
-      }
-    };
-
-    pumpQueue();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
-
-  // 2. High-Performance Canvas Initialization & Hardware 1:1 Draw
-  // Fixed 1920x1080 buffer delegates display scaling to the GPU hardware texture filter at 0% CPU cost
-  const drawFrame = (frameIndex) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-    if (!ctx) return;
-
-    if (canvas.width !== 1920 || canvas.height !== 1080) {
-      canvas.width = 1920;
-      canvas.height = 1080;
-    }
-
-    const frame = imagesRef.current[frameIndex] || lastAvailableFrameRef.current;
-    if (!frame) return;
-
-    lastAvailableFrameRef.current = frame;
-    ctx.drawImage(frame, 0, 0, 1920, 1080);
-  };
-
-  // Initial mount canvas setup
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      canvas.width = 1920;
-      canvas.height = 1080;
-    }
-  }, []);
-
-  // 3. Update Overlays Directly in DOM with Hardware translate3d Compositing
-  const updateDomOverlays = (p) => {
-    // A. Corridor Editorial Overlay (Visible from 0% to ~35%)
-    const corridorOpacity = Math.max(0, 1 - p * 2.8);
-    const corridorY = p * 40;
-    if (corridorOverlayRef.current) {
-      corridorOverlayRef.current.style.opacity = corridorOpacity;
-      corridorOverlayRef.current.style.transform = `translate3d(0, ${corridorY}px, 0)`;
-      corridorOverlayRef.current.style.pointerEvents = corridorOpacity < 0.05 ? 'none' : 'auto';
-    }
-    if (skyCardRef.current) {
-      skyCardRef.current.style.opacity = corridorOpacity;
-      skyCardRef.current.style.transform = `translate3d(0, ${corridorY * 0.7}px, 0)`;
-      skyCardRef.current.style.pointerEvents = corridorOpacity < 0.05 ? 'none' : 'auto';
-    }
-    if (bottomWidgetRef.current) {
-      bottomWidgetRef.current.style.opacity = corridorOpacity;
-      bottomWidgetRef.current.style.transform = `translate3d(0, ${corridorY}px, 0)`;
-      bottomWidgetRef.current.style.pointerEvents = corridorOpacity < 0.05 ? 'none' : 'auto';
-    }
-    if (bottomCaptionRef.current) {
-      bottomCaptionRef.current.style.opacity = corridorOpacity;
-      bottomCaptionRef.current.style.transform = `translate3d(0, ${corridorY}px, 0)`;
-    }
-
-    // B. Stepper (01, 02, 03)
-    if (step01TextRef.current && step02TextRef.current && step03TextRef.current) {
-      if (p < 0.35) {
-        step01TextRef.current.className = 'text-white font-bold';
-        step02TextRef.current.className = 'text-slate-500 hover:text-slate-300 transition-colors';
-        step03TextRef.current.className = 'text-slate-600 hover:text-slate-400 transition-colors';
-      } else if (p < 0.70) {
-        step01TextRef.current.className = 'text-slate-500 hover:text-slate-300 transition-colors';
-        step02TextRef.current.className = 'text-white font-bold';
-        step03TextRef.current.className = 'text-slate-600 hover:text-slate-400 transition-colors';
+  const handleScrollToSection = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (window.lenis) {
+        window.lenis.scrollTo(el, { offset: -30, duration: 1.4 });
       } else {
-        step01TextRef.current.className = 'text-slate-600 hover:text-slate-400 transition-colors';
-        step02TextRef.current.className = 'text-slate-500 hover:text-slate-300 transition-colors';
-        step03TextRef.current.className = 'text-white font-bold';
-      }
-    }
-
-    // C. Command Center Overlay (Reveals from 70% to 100%)
-    const commandOpacity = Math.min(1, Math.max(0, (p - 0.70) * 3.33));
-    const commandY = (1 - commandOpacity) * 25;
-    if (commandCenterOverlayRef.current) {
-      commandCenterOverlayRef.current.style.opacity = commandOpacity;
-      commandCenterOverlayRef.current.style.transform = `translate3d(0, ${commandY}px, 0)`;
-      commandCenterOverlayRef.current.style.pointerEvents = commandOpacity > 0.4 ? 'auto' : 'none';
-    }
-
-    // D. Sleep Mode State for NeuralOrb: Activate when entering Command Center room (saves 100% CPU during flight)
-    if (p >= 0.65 && !isOrbActiveRef.current) {
-      isOrbActiveRef.current = true;
-      setIsOrbActive(true);
-    } else if (p < 0.58 && isOrbActiveRef.current) {
-      isOrbActiveRef.current = false;
-      setIsOrbActive(false);
-    }
-
-    // E. Flight Badge Indicator
-    if (flightBadgeRef.current && flightPctTextRef.current) {
-      if (p > 0.05 && p < 0.95) {
-        flightBadgeRef.current.style.opacity = '1';
-        flightBadgeRef.current.style.pointerEvents = 'auto';
-        flightPctTextRef.current.innerText = `Entering: ${Math.round(p * 100)}%`;
-      } else {
-        flightBadgeRef.current.style.opacity = '0';
-        flightBadgeRef.current.style.pointerEvents = 'none';
-      }
-    }
-  };
-
-  // 4. Native Smooth Scroll Tracker (Passive, zero-interception, butter-smooth native physics)
-  useEffect(() => {
-    const handleScroll = () => {
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const scrollableDist = rect.height - window.innerHeight;
-      if (scrollableDist <= 0) return;
-
-      const raw = -rect.top / scrollableDist;
-      targetProgressRef.current = Math.max(0, Math.min(1, raw));
-    };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll();
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // 5. Continuous Lerp (Linear Interpolation) Render Loop
-  useEffect(() => {
-    let active = true;
-
-    const render = () => {
-      if (!active) return;
-
-      const target = targetProgressRef.current;
-      const current = smoothProgressRef.current;
-      const diff = target - current;
-
-      // Silky responsive momentum dampening (synchronized with Lenis smooth scroll)
-      if (Math.abs(diff) > 0.00005) {
-        smoothProgressRef.current += diff * 0.22;
-      } else {
-        smoothProgressRef.current = target;
-      }
-
-      const p = smoothProgressRef.current;
-      const frameIdx = Math.max(0, Math.min(TOTAL_FRAMES - 1, Math.round(p * (TOTAL_FRAMES - 1))));
-
-      // Only invoke canvas draw if frame index changed
-      if (frameIdx !== lastDrawnFrameRef.current) {
-        drawFrame(frameIdx);
-        lastDrawnFrameRef.current = frameIdx;
-      }
-
-      // Fast direct style updates
-      updateDomOverlays(p);
-
-      rafIdRef.current = requestAnimationFrame(render);
-    };
-
-    rafIdRef.current = requestAnimationFrame(render);
-
-    return () => {
-      active = false;
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-    };
-  }, []);
-
-  // Trigger flight sequence smoothly by native scroll
-  const handleStartFlight = () => {
-    const container = containerRef.current;
-    if (!container) return;
-    const targetY = container.offsetTop + (container.offsetHeight - window.innerHeight);
-    if (window.lenis) {
-      window.lenis.scrollTo(targetY, { duration: 2.2 });
-    } else {
-      window.scrollTo({ top: targetY, behavior: 'smooth' });
-    }
-  };
-
-  const handleStartJourney = () => {
-    if (onEnterDashboard) {
-      onEnterDashboard();
-    } else {
-      const target = document.getElementById('deepfakes-section') || document.getElementById('scanbay-section');
-      if (target) {
-        if (window.lenis) {
-          window.lenis.scrollTo(target, { offset: -20, duration: 1.4 });
-        } else {
-          target.scrollIntoView({ behavior: 'smooth' });
-        }
+        el.scrollIntoView({ behavior: 'smooth' });
       }
     }
   };
@@ -315,174 +24,129 @@ export default function HeroSection({ onEnterDashboard }) {
   return (
     <section 
       id="overview-section"
-      ref={containerRef} 
-      className="relative w-full h-[420vh] bg-[#070B13]"
+      className="relative w-full min-h-screen bg-[#0B1519] bg-petrol-grid pt-28 sm:pt-36 lg:pt-40 pb-20 sm:pb-28 px-5 sm:px-8 lg:px-12 flex flex-col justify-between overflow-hidden"
     >
-      {/* Sticky Fullscreen Canvas Viewport */}
-      <div className="sticky top-0 h-screen w-full overflow-hidden select-none bg-[#070B13]">
+      {/* Soft Ambient Radial Vignettes */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[700px] sm:w-[1000px] h-[500px] bg-gradient-to-b from-[#EE8656]/5 via-[#18313A]/20 to-transparent blur-3xl pointer-events-none rounded-full" />
+      <div className="absolute top-10 right-10 w-96 h-96 bg-[#EE8656]/5 blur-[120px] pointer-events-none rounded-full" />
+
+      {/* Main Hero Container */}
+      <div className="max-w-7xl mx-auto w-full relative z-10 flex-1 flex flex-col justify-between">
         
-        {/* Full-Screen Canvas Viewport (Fixed 1080p Buffer with Hardware GPU Scaling) */}
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none will-change-transform"
-        />
+        {/* Top Half: Left Headline + Right Bezeled 3D Robot Window */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+          
+          {/* Left Column: Bold Typography Matching Reference Image */}
+          <div className="lg:col-span-6 flex flex-col items-start text-left">
+            
+            {/* Terracotta Sub-dash Eyebrow */}
+            <div className="flex items-center gap-2.5 mb-4 text-[#EE8656] text-xs sm:text-sm font-mono font-bold uppercase tracking-[0.22em]">
+              <span className="w-7 h-[2px] bg-[#EE8656] inline-block" />
+              <span>WELCOME TO</span>
+            </div>
 
-        {/* Atmospheric Vignette & Contrast Gradients */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#070B13]/85 via-transparent to-[#070B13]/90 pointer-events-none z-10" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_45%,#070B13_100%)] pointer-events-none z-10 opacity-70" />
+            {/* High-Impact Headline matching Riverside format */}
+            <h1 className="text-4xl sm:text-6xl lg:text-[66px] font-extrabold text-white font-sans leading-[1.04] tracking-tight uppercase mb-5">
+              TRUSTLENS FORENSIC<br />
+              <span className="text-[#EE8656]">SERVICES</span>
+            </h1>
 
-        {/* =========================================================================
-            LEFT-ALIGNED EDITORIAL HERO BLOCK (Corridor View: Frames 0 to ~80)
-            ========================================================================= */}
-        <div 
-          ref={corridorOverlayRef}
-          className="absolute top-[22%] sm:top-[25%] left-6 sm:left-12 lg:left-20 z-20 max-w-xl lg:max-w-2xl pointer-events-auto transition-transform will-change-transform"
-        >
-          {/* Eyebrow: Dash line + uppercase tracking */}
-          <div className="flex items-center gap-3 mb-4 sm:mb-5 text-[10px] sm:text-xs tracking-[0.25em] uppercase font-mono text-cyan-300/80">
-            <span className="w-8 sm:w-12 h-[1px] bg-cyan-400/60 inline-block" />
-            <span>A New Era of Autonomous Forensics</span>
-          </div>
+            {/* Sub-paragraph */}
+            <p className="text-slate-300 text-sm sm:text-base lg:text-lg font-normal leading-relaxed max-w-lg mb-8 text-slate-300/90">
+              Autonomous neural forensic engine detecting generative deepfakes, synthetic voice clones, and biometric tampering since 2024.
+            </p>
 
-          {/* High-Contrast Editorial Serif Headline */}
-          <h1 className="font-editorial text-5xl sm:text-7xl lg:text-[80px] text-white font-normal tracking-tight leading-[1.04] mb-5 sm:mb-6 drop-shadow-[0_4px_30px_rgba(0,0,0,0.85)]">
-            Verify the Truth.<br />
-            <span className="italic font-light bg-gradient-to-r from-white via-cyan-100 to-cyan-300 bg-clip-text text-transparent">
-              At Machine Speed.
-            </span>
-          </h1>
+            {/* CTA Buttons */}
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                onClick={onEnterDashboard || (() => handleScrollToSection('deepfakes-section'))}
+                className="px-7 py-3.5 rounded-full bg-[#EE8656] hover:bg-[#FA9C72] text-[#0B1519] font-bold text-xs tracking-wider uppercase shadow-[0_0_30px_rgba(238,134,86,0.38)] hover:shadow-[0_0_40px_rgba(238,134,86,0.55)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <span>Launch Analysis Lab</span>
+                <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              </button>
 
-          {/* Concise Supporting Description */}
-          <p className="text-slate-300 text-xs sm:text-sm lg:text-base font-light leading-relaxed max-w-lg mb-8 drop-shadow-md">
-            Autonomous threat forensics engine decoding advance-fee employment scams, synthetic voice wires, and infrastructure spoofing before payload execution.
-          </p>
-
-          {/* Action Button Row: White Primary Pill + Glass Circle Play Button */}
-          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-            <button
-              onClick={handleStartJourney}
-              className="px-7 py-3 rounded-full bg-white hover:bg-cyan-100 text-slate-950 font-semibold text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(255,255,255,0.25)] hover:shadow-cyan-400/40 flex items-center gap-2 active:scale-95 cursor-pointer"
-            >
-              <span>Start Your Journey</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-
-            <div 
-              onClick={handleStartFlight}
-              className="group flex items-center gap-3 text-white text-xs font-mono cursor-pointer transition-colors hover:text-cyan-300 active:scale-95"
-            >
-              <div className="w-9 h-9 rounded-full bg-slate-900/70 border border-white/20 group-hover:border-cyan-400/60 flex items-center justify-center backdrop-blur-md shadow-md transition-all">
-                <Play className="w-3.5 h-3.5 fill-white text-white ml-0.5 group-hover:fill-cyan-300 group-hover:text-cyan-300 transition-colors" />
-              </div>
-              <span className="font-medium tracking-wide">Enter Flight Sequence</span>
+              <button
+                onClick={() => handleScrollToSection('scanbay-section')}
+                className="px-6 py-3.5 rounded-full bg-[#112127] hover:bg-[#192E36] text-slate-200 border border-[#27404A] hover:border-[#EE8656]/50 font-semibold text-xs tracking-wider uppercase transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <span>Scan Bay 3D</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              </button>
             </div>
           </div>
+
+          {/* Right Column: Signature Bezeled Window housing Interactive 3D Mascot */}
+          <div className="lg:col-span-6 w-full flex justify-center lg:justify-end">
+            <div className="relative w-full max-w-lg lg:max-w-xl aspect-[4/3] sm:aspect-[16/11] rounded-[28px] sm:rounded-[36px] p-3 sm:p-4 bg-gradient-to-b from-[#14262D] via-[#0E1A1F] to-[#0A1417] border-2 border-[#223942] shadow-[0_24px_60px_rgba(0,0,0,0.85),_inset_0_1px_0_rgba(255,255,255,0.1)] flex items-center justify-center overflow-hidden group">
+              
+              {/* Inner Bezel Screen */}
+              <div className="w-full h-full rounded-[20px] sm:rounded-[26px] overflow-hidden bg-gradient-to-b from-[#0D181C] to-[#081013] border border-[#1A2E35] relative shadow-inner">
+                
+                {/* Embedded Interactive 3D Robot Sentinel */}
+                <InteractiveRobotSentinel status="idle" className="w-full h-full" />
+                
+                {/* Subtle Viewport Corner Brackets */}
+                <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-[#EE8656]/40 pointer-events-none rounded-tl-sm" />
+                <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-[#EE8656]/40 pointer-events-none rounded-tr-sm" />
+                <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-[#EE8656]/40 pointer-events-none rounded-bl-sm" />
+                <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-[#EE8656]/40 pointer-events-none rounded-br-sm" />
+              </div>
+
+            </div>
+          </div>
+
         </div>
 
-        {/* =========================================================================
-            TOP-RIGHT FLOATING GLASS CARD (Preview of Cyber Command Core)
-            ========================================================================= */}
-        <div 
-          ref={skyCardRef}
-          onClick={handleStartFlight}
-          className="hidden md:flex absolute top-28 right-8 sm:right-16 z-20 p-2.5 pr-4 rounded-2xl bg-slate-950/40 border border-white/15 backdrop-blur-xl shadow-2xl items-center gap-3 max-w-xs transition-all hover:border-cyan-400/40 cursor-pointer group pointer-events-auto will-change-transform"
-        >
-          <div className="relative w-12 h-10 rounded-lg overflow-hidden border border-cyan-400/30 bg-slate-900 shrink-0">
-            <img 
-              src="/cyber_command_center_4k.png" 
-              alt="Command Center Preview" 
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-            />
+        {/* Bottom Half: 3 Bimodal Cards Cutting Across the Fold (Exact match to reference) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 mt-14 sm:mt-20">
+          
+          {/* Card 1: Warm Porcelain Cream (Left) */}
+          <div className="bg-[#FAF7F0] text-[#111A1D] rounded-3xl p-7 sm:p-8 shadow-2xl flex flex-col justify-between border border-[#EBE4D6] hover:shadow-[0_20px_45px_rgba(0,0,0,0.4)] transition-all">
+            <div className="w-12 h-12 rounded-2xl bg-[#EFE8DC] border border-[#DFD6C6] flex items-center justify-center mb-6 text-[#EE8656] shadow-sm">
+              <Layers className="w-6 h-6 stroke-[2.2]" />
+            </div>
+            <div>
+              <p className="text-base sm:text-lg font-bold leading-snug text-[#111A1D] tracking-tight">
+                We detect generative deepfakes, synthetic voices, and forged biometric credentials.
+              </p>
+            </div>
           </div>
-          <div className="text-left font-sans">
-            <span className="text-xs font-bold text-white block group-hover:text-cyan-300 transition-colors">
-              Cyber Command Core
-            </span>
-            <span className="text-[10px] text-cyan-300/80 font-mono block">
-              A new security era awaits →
-            </span>
-          </div>
-        </div>
 
-        {/* =========================================================================
-            RIGHT VERTICAL STEPPER / PAGINATION (01, 02, 03)
-            ========================================================================= */}
-        <div 
-          ref={stepperRef}
-          className="hidden lg:flex absolute right-8 sm:right-12 top-1/2 -translate-y-1/2 z-20 flex-col items-center gap-5 text-xs font-mono select-none pointer-events-none transition-opacity duration-300"
-        >
-          <div className="flex flex-col items-center gap-1.5">
-            <span ref={step01TextRef} className="text-white font-bold">01</span>
-            <div ref={step01LineRef} className="w-[1.5px] h-8 bg-cyan-400 shadow-[0_0_8px_#00F0FF]" />
-          </div>
-          <span ref={step02TextRef} className="text-slate-500 hover:text-slate-300 transition-colors">02</span>
-          <span ref={step03TextRef} className="text-slate-600 hover:text-slate-400 transition-colors">03</span>
-        </div>
-
-        {/* =========================================================================
-            BOTTOM-LEFT FLOATING MICRO-WIDGET
-            ========================================================================= */}
-        <div 
-          ref={bottomWidgetRef}
-          className="hidden sm:flex absolute bottom-8 sm:bottom-10 left-6 sm:left-12 lg:left-20 z-20 items-center gap-3.5 max-w-md pointer-events-auto will-change-transform"
-        >
-          <div className="w-10 h-10 rounded-full border border-cyan-400/40 bg-slate-900/80 p-1 flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(0,240,255,0.25)]">
-            <img 
-              src="/trustlens_mark_transparent.png" 
-              alt="Emblem" 
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <div className="font-sans">
-            <span className="text-xs font-bold text-white block">
-              Explore Autonomous Verification
-            </span>
-            <span className="text-[11px] text-slate-300/80 font-light leading-tight block">
-              From deepfake voice clones to advance-fee PDFs, your defense is one click away.
-            </span>
-          </div>
-        </div>
-
-        {/* =========================================================================
-            BOTTOM-RIGHT MICRO CAPTION
-            ========================================================================= */}
-        <div 
-          ref={bottomCaptionRef}
-          className="hidden md:flex absolute bottom-8 sm:bottom-10 right-6 sm:right-12 lg:right-20 z-20 items-center gap-3 text-xs text-slate-400 font-light select-none pointer-events-none will-change-transform"
-        >
-          <span className="w-6 h-[1px] bg-slate-600" />
-          <span>More than security — <span className="text-slate-200 italic font-editorial text-sm">it&apos;s mathematical truth.</span></span>
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400/70" />
-        </div>
-
-        {/* =========================================================================
-            COMMAND ROOM ARRIVAL OVERLAY (Reveals cleanly when flight reaches 100%)
-            Pure Cinematic 3D Neural Art Orb Centerpiece (All text removed per instruction)
-            ========================================================================= */}
-        <div 
-          ref={commandCenterOverlayRef}
-          className="absolute inset-0 z-20 flex items-center justify-center p-4 will-change-transform pointer-events-none select-none"
-          style={{ opacity: 0 }}
-        >
-          {/* Big Interactive 3D Neural Art Orb with Multi-Layer Volumetric Glow */}
-          <div className="relative flex items-center justify-center pointer-events-auto transform scale-100 sm:scale-105 lg:scale-115 transition-transform">
-            {/* Multi-layered radial ambient glow backdrop in Electric Cyan, Pure White & Cosmic Obsidian */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/35 via-blue-600/25 to-cyan-300/20 rounded-full blur-[60px] transform scale-125 pointer-events-none will-change-transform" />
-            <div className="absolute inset-0 bg-cyan-400/20 rounded-full blur-[80px] transform scale-150 pointer-events-none will-change-transform" />
+          {/* Card 2: Dark Petrol Glass (Center) */}
+          <div className="bg-gradient-to-b from-[#122228] to-[#0C161A] text-[#E5ECED] rounded-3xl p-7 sm:p-8 shadow-2xl border border-[#233B44] flex flex-col justify-between relative overflow-hidden group hover:border-[#EE8656]/50 transition-all">
+            <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-[#EE8656]/15 blur-2xl pointer-events-none" />
             
-            {/* Big 3D Neural Orb Component with Sleep Mode Support */}
-            <NeuralOrb size={560} isActive={isOrbActive} className="relative z-20 drop-shadow-[0_0_80px_rgba(0,240,255,0.65)]" />
+            <div className="w-12 h-12 rounded-2xl bg-[#1A2E35] border border-[#2B4652] flex items-center justify-center mb-6 text-[#EE8656] shadow-inner group-hover:scale-105 transition-transform">
+              <PhoneCall className="w-6 h-6 stroke-[2.2]" />
+            </div>
+            
+            <div>
+              <p className="text-base sm:text-lg font-bold leading-snug text-white tracking-tight">
+                Call us any time on{' '}
+                <a 
+                  href="tel:01632960112"
+                  className="text-[#EE8656] underline underline-offset-4 decoration-[#EE8656]/60 hover:text-[#FA9C72] transition-colors"
+                >
+                  01632 960 112
+                </a>{' '}
+                for a free forensic audit.
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Live Sequence Progress Indicator Pill during flight */}
-        <div 
-          ref={flightBadgeRef}
-          className="absolute right-6 bottom-8 z-30 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-950/80 border border-cyan-500/40 text-cyan-400 font-mono text-xs shadow-lg backdrop-blur-md transition-opacity duration-300 pointer-events-none"
-          style={{ opacity: 0 }}
-        >
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span ref={flightPctTextRef}>Entering: 0%</span>
+          {/* Card 3: Warm Porcelain Cream (Right) */}
+          <div className="bg-[#FAF7F0] text-[#111A1D] rounded-3xl p-7 sm:p-8 shadow-2xl flex flex-col justify-between border border-[#EBE4D6] hover:shadow-[0_20px_45px_rgba(0,0,0,0.4)] transition-all">
+            <div className="w-12 h-12 rounded-2xl bg-[#EFE8DC] border border-[#DFD6C6] flex items-center justify-center mb-6 text-[#EE8656] shadow-sm">
+              <ShieldCheck className="w-6 h-6 stroke-[2.2]" />
+            </div>
+            <div>
+              <p className="text-base sm:text-lg font-bold leading-snug text-[#111A1D] tracking-tight">
+                Zero false-positive SLA on tamper analysis. All forensic reports cryptographically signed.
+              </p>
+            </div>
+          </div>
+
         </div>
 
       </div>

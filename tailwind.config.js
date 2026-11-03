@@ -8,6 +8,34 @@ export default {
   theme: {
     extend: {
       colors: {
+        petrol: {
+          950: '#070E11',
+          900: '#0B1519',
+          850: '#0E1A1E',
+          800: '#122228',
+          700: '#1B313A',
+          600: '#26444F',
+          500: '#345B69',
+        },
+        terracotta: {
+          50: '#FFF7F3',
+          100: '#FFE9DF',
+          200: '#FED2C0',
+          300: '#FCAE8F',
+          400: '#FA9468',
+          500: '#EE8656', // Reference image primary copper/terracotta accent
+          600: '#DE6E3C',
+          700: '#BA5325',
+          800: '#94411C',
+          900: '#7A3517',
+        },
+        cream: {
+          50: '#FFFDF9',
+          100: '#FAF7F0', // Reference image warm porcelain cream card
+          200: '#F3EFE4',
+          300: '#E6E0D2',
+          400: '#D5CCBC',
+        },
         navy: {
           950: '#0B0F19',
           900: '#0F172A',
